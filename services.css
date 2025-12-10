@@ -1,0 +1,23 @@
+/* services.css */
+.services-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; padding: 0 20px; padding-bottom: 90px; }
+.svc-card { background: white; border: 1px solid #f1f5f9; padding: 18px; border-radius: 16px; text-align: center; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.01); position: relative; overflow: hidden; }
+.svc-card:hover { transform: translateY(-3px); border-color: #bfdbfe; box-shadow: 0 8px 15px rgba(37, 99, 235, 0.08); }
+.svc-icon { width: 50px; height: 50px; margin: 0 auto 12px; border-radius: 14px; display: flex; align-items: center; justify-content: center; color: white; font-size: 22px; }
+.svc-price { background: #f1f5f9; color: #1e40af; font-size: 11px; font-weight: 700; padding: 4px 10px; border-radius: 20px; margin-top: 8px; display: inline-block; }
+#ord-dynamic-form { display: flex; flex-direction: column; gap: 10px; margin-bottom: 15px; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
+.input-label { font-size: 12px; font-weight: 600; color: #334155; margin-left: 2px; }
+.dynamic-field { border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 8px; padding: 12px; font-size: 13px; color: #1e293b; transition: 0.2s; font-family: inherit; width: 100%; box-sizing: border-box; }
+.dynamic-field:focus { border-color: #2563eb; background: white; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1); outline: none; }
+textarea.dynamic-field { resize: none; }
+#ord-file { border: 1px dashed #2563eb; background: #eff6ff; color: #2563eb; font-size: 13px; }
+.operator-label { text-align: center; font-size: 13px; font-weight: 700; color: #ef4444; margin-bottom: 10px; }
+.operator-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 15px; }
+.op-btn { padding: 10px 2px; border: 1px solid #e2e8f0; border-radius: 8px; background: white; font-size: 10px; font-weight: 600; cursor: pointer; text-align: center; color: #64748b; transition: 0.2s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.op-btn:hover { background: #f8fafc; }
+.op-btn.active { color: white; border-color: transparent; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+.op-btn[data-val="Banglalink"].active { background: #f97316; }
+.op-btn[data-val="Grameenphone"].active { background: #3b82f6; }
+.op-btn[data-val="Robi_Airtel"].active { background: #ef4444; }
+.op-btn[data-val="Teletalk"].active { background: #14b8a6; }
+select.dynamic-field { appearance: none; background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e"); background-repeat: no-repeat; background-position: right 10px center; background-size: 14px; }

@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Server Access Terminal</title>
+    <link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@500;700&display=swap" rel="stylesheet">
+    <style>
+        /* --- CSS SETUP --- */
+        :root {
+            --primary: #00f3ff;   /* Cyan Neon */
+            --danger: #ff003c;    /* Red Warning */
+            --bg: #050505;
+            --font-main: 'Orbitron', sans-serif;
+            --font-code: 'Share Tech Mono', monospace;
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg);
+            color: var(--primary);
+            font-family: var(--font-code);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            user-select: none;
+            transition: 0.5s;
+        }
+
+        /* Matrix Background */
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+            opacity: 0.15;
+        }
+
+        /* Start Button Overlay */
+        #overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.95);
+            z-index: 1000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .btn-start {
+            padding: 20px 40px;
+            font-size: 1.5rem;
+            background: transparent;
+            color: var(--primary);
+            border: 2px solid var(--primary);
+            font-family: var(--font-main);
+            letter-spacing: 3px;
+            cursor: pointer;
+            box-shadow: 0 0 20px var(--primary);
+            transition: 0.3s;
+            text-transform: uppercase;
+        }
+        
+        .btn-start:hover {
+            background: var(--primary);
+            color: #000;
+            box-shadow: 0 0 50px var(--primary);
+        }
+
+        /* Main Container */
+        .ui-container {
+            position: relative;
+            z-index: 10;
+            width: 90%;
+            max-width: 800px;
+            text-align: center;
+            display: none; /* Initially Hidden */
+        }
+
+        /* --- UPDATED HUD WITH VIDEO --- */
+        .hud-wrapper {
+            width: 140px;  /* Slightly Increased size */
+            height: 140px;
+            margin: 0 auto 30px;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        /* Video Styling */
+        .hud-video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Ensures video fills the circle */
+            border-radius: 50%; /* Makes video round */
+            position: absolute;
+            z-index: 1; /* Sits behind the rings */
+            opacity: 0.8; /* Slightly transparent to blend */
+            box-shadow: 0 0 20px rgba(0, 243, 255, 0.3);
+        }
+
+        .ring {
+            position: absolute;
+            border-radius: 50%;
+            border: 2px solid transparent;
+            z-index: 5; /* Sits on top of video */
+            pointer-events: none;
+        }
+        
+        .ring-outer {
+            width: 100%;
+            height: 100%;
+            border-top: 4px solid var(--primary);
+            border-bottom: 4px solid var(--primary);
+            animation: spin 3s linear infinite;
+            box-shadow: 0 0 15px var(--primary);
+        }
+        
+        .ring-inner {
+            width: 75%;
+            height: 75%;
+            border-left: 3px solid var(--primary);
+            border-right: 3px solid var(--primary);
+            animation: spin-rev 5s linear infinite;
+        }
+
+        /* Text Area */
+        h1 {
+            font-family: var(--font-main);
+            font-size: 2rem;
+            margin-bottom: 10px;
+            text-shadow: 0 0 10px var(--primary);
+            min-height: 40px;
+        }
+
+        .info-text {
+            font-size: 1.3rem;
+            color: #fff;
+            min-height: 80px;
+            line-height: 1.6;
+            margin-bottom: 20px;
+            font-weight: bold;
+            position: relative;
+        }
+
+        /* Blinking Cursor Effect */
+        .cursor-active::after {
+            content: '█';
+            display: inline-block;
+            margin-left: 5px;
+            animation: blink 0.8s infinite;
+            color: var(--primary);
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* Progress Bar */
+        .loader-box {
+            width: 100%;
+            height: 6px;
+            background: #111;
+            border: 1px solid #333;
+            margin-top: 20px;
+            position: relative;
+        }
+
+        .loader-fill {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            box-shadow: 0 0 10px var(--primary);
+            transition: width 0.1s linear;
+        }
+
+        /* Console Log */
+        .terminal-log {
+            text-align: left;
+            font-size: 0.85rem;
+            color: rgba(0, 255, 255, 0.7);
+            margin-top: 20px;
+            height: 120px;
+            overflow: hidden;
+            border-top: 1px solid rgba(0, 255, 255, 0.3);
+            padding-top: 10px;
+            font-family: monospace;
+        }
+
+        .log-entry { margin-bottom: 4px; }
+        .spinner { display: inline-block; width: 15px; text-align: center; color: #fff; }
+
+        /* --- RED ALERT MODE --- */
+        body.alert-mode {
+            --primary: var(--danger);
+        }
+        body.alert-mode .terminal-log { color: rgba(255, 0, 60, 0.7); border-top-color: rgba(255, 0, 60, 0.3); }
+        body.alert-mode .ring-outer, body.alert-mode .ring-inner { border-color: transparent; border-top-color: var(--danger); border-bottom-color: var(--danger); box-shadow: 0 0 15px var(--danger); }
+        body.alert-mode .ring-inner { border-left-color: var(--danger); border-right-color: var(--danger); border-top-color: transparent; border-bottom-color: transparent; }
+
+        /* --- GLITCH EFFECT --- */
+        body.glitch-active {
+            animation: glitch-shake 0.2s cubic-bezier(.36,.07,.19,.97) both infinite;
+            filter: invert(1) contrast(2);
+            background: white;
+        }
+        
+        body.glitch-active * {
+            color: black !important;
+            text-shadow: 2px 0 red, -2px 0 blue;
+        }
+
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes spin-rev { 100% { transform: rotate(-360deg); } }
+
+        @keyframes glitch-shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+            40%, 60% { transform: translate3d(6px, 0, 0); }
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 600px) {
+            h1 { font-size: 1.5rem; }
+            .info-text { font-size: 1rem; min-height: 60px; }
+            .btn-start { padding: 15px 30px; font-size: 1.2rem; }
+        }
+
+    </style>
+</head>
+<body>
+
+    <!-- Matrix Background -->
+    <canvas id="matrix"></canvas>
+
+    <!-- Start Screen -->
+    <div id="overlay">
+        <button class="btn-start" id="startBtn">INITIALIZE SYSTEM</button>
+    </div>
+
+    <!-- Main Interface -->
+    <div class="ui-container" id="interface">
+        
+        <div class="hud-wrapper">
+            <!-- VIDEO ADDED HERE -->
+            <video class="hud-video" src="logo.mp4" autoplay loop muted playsinline></video>
+            
+            <div class="ring ring-outer"></div>
+            <div class="ring ring-inner"></div>
+        </div>
+
+        <h1 id="main-header">SYSTEM LOADING...</h1>
+        <div class="info-text cursor-active" id="voice-text"></div>
+
+        <div class="loader-box">
+            <div class="loader-fill" id="progress"></div>
+        </div>
+
+        <div class="terminal-log" id="console"></div>
+
+    </div>
+
+    <script>
+        // --- 1. FORCE RESET SESSION ---
+        sessionStorage.removeItem('introShown');
+
+        // --- CONFIGURATION ---
+        const REDIRECT_URL = "index.html"; 
+
+        // --- DOM ELEMENTS ---
+        const overlay = document.getElementById('overlay');
+        const startBtn = document.getElementById('startBtn');
+        const ui = document.getElementById('interface');
+        const header = document.getElementById('main-header');
+        const voiceText = document.getElementById('voice-text');
+        const progressBar = document.getElementById('progress');
+        const consoleDiv = document.getElementById('console');
+        const body = document.body;
+        // Video element control
+        const hudVideo = document.querySelector('.hud-video');
+
+        // --- AUDIO ENGINE ---
+        let audioCtx;
+        function setupAudio() {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            if (AudioContext) audioCtx = new AudioContext();
+        }
+
+        function playDrone() {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth'; osc.frequency.value = 50; gain.gain.value = 0.02; 
+            osc.connect(gain); gain.connect(audioCtx.destination); osc.start();
+        }
+
+        function playTypingSound() {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square'; 
+            osc.frequency.setValueAtTime(600 + Math.random() * 200, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0.04, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.05);
+            osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.05);
+        }
+
+        let computingInterval;
+        function toggleComputingSound(active) {
+            if(!audioCtx) return;
+            if (active) {
+                if (computingInterval) return; 
+                computingInterval = setInterval(() => {
+                    const osc = audioCtx.createOscillator();
+                    const gain = audioCtx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(100 + Math.random() * 800, audioCtx.currentTime);
+                    gain.gain.setValueAtTime(0.03, audioCtx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.08);
+                    osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.08);
+                }, 80); 
+            } else {
+                clearInterval(computingInterval); computingInterval = null;
+            }
+        }
+
+        let alarmTimer;
+        function playAlarmSound() {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth'; 
+            osc.frequency.setValueAtTime(150, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(80, audioCtx.currentTime + 0.4);
+            gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+            osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+        }
+
+        function toggleAlarm(on) {
+            if(on) alarmTimer = setInterval(playAlarmSound, 500);
+            else clearInterval(alarmTimer);
+        }
+
+        function playGlitchNoise() {
+            if(!audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(100, audioCtx.currentTime);
+            osc.frequency.linearRampToValueAtTime(800, audioCtx.currentTime + 0.1);
+            osc.frequency.linearRampToValueAtTime(200, audioCtx.currentTime + 0.2);
+            osc.frequency.linearRampToValueAtTime(1200, audioCtx.currentTime + 0.3);
+            gain.gain.setValueAtTime(0.5, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+            osc.connect(gain); gain.connect(audioCtx.destination); osc.start(); osc.stop(audioCtx.currentTime + 0.4);
+        }
+
+        function speakText(text) {
+            return new Promise((resolve) => {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                    const utterance = new SpeechSynthesisUtterance(text);
+                    utterance.lang = 'en-US'; utterance.pitch = 0.6; utterance.rate = 1.0; utterance.volume = 1.0;
+                    const voices = window.speechSynthesis.getVoices();
+                    const maleVoice = voices.find(v => v.name.includes('Male') || v.name.includes('David'));
+                    if (maleVoice) utterance.voice = maleVoice;
+                    utterance.onend = function() { resolve(); };
+                    utterance.onerror = function(e) { resolve(); };
+                    window.speechSynthesis.speak(utterance);
+                } else { setTimeout(resolve, 2000); }
+            });
+        }
+        if ('speechSynthesis' in window) window.speechSynthesis.getVoices();
+
+        const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+        async function typeWriter(text, element) {
+            element.innerHTML = "";
+            for(let i=0; i<text.length; i++) {
+                element.innerHTML += text[i];
+                if(text[i] !== ' ') playTypingSound();
+                await sleep(35);
+            }
+        }
+
+        async function logProcess(msg, duration) {
+            const p = document.createElement('div');
+            p.className = 'log-entry';
+            p.innerHTML = `<span class="spinner">/</span> ${msg}`;
+            consoleDiv.prepend(p);
+            toggleComputingSound(true);
+            const spinnerSpan = p.querySelector('.spinner');
+            const chars = ['/', '-', '\\', '|'];
+            let idx = 0;
+            const steps = duration / 100;
+            for(let i=0; i<steps; i++) {
+                spinnerSpan.innerText = chars[idx++ % chars.length];
+                await sleep(100);
+            }
+            toggleComputingSound(false);
+            spinnerSpan.innerText = "✔";
+            spinnerSpan.style.color = body.classList.contains('alert-mode') ? '#ff003c' : '#00ff00';
+        }
+
+        const canvas = document.getElementById('matrix');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+        const chars = "01SYSTEM_ACCESS_DENIED_GRANTED_ROOT_KRNL";
+        const drops = Array(Math.floor(canvas.width/20)).fill(1);
+
+        function drawMatrix() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = body.classList.contains('alert-mode') ? '#ff003c' : '#00f3ff';
+            ctx.font = '14px monospace';
+            for(let i=0; i<drops.length; i++) {
+                const text = chars[Math.floor(Math.random()*chars.length)];
+                ctx.fillText(text, i*20, drops[i]*20);
+                if(drops[i]*20 > canvas.height && Math.random() > 0.975) drops[i] = 0;
+                drops[i]++;
+            }
+            requestAnimationFrame(drawMatrix);
+        }
+        drawMatrix();
+
+        startBtn.addEventListener('click', async () => {
+            startBtn.disabled = true;
+            setupAudio();
+            if (audioCtx && audioCtx.state === 'suspended') await audioCtx.resume();
+            
+            // Ensure video plays
+            if(hudVideo) hudVideo.play().catch(e => console.log("Video autoplay blocked", e));
+
+            playDrone();
+            overlay.style.display = 'none';
+            ui.style.display = 'block';
+
+            logProcess("Initializing Core Systems...", 1000);
+            header.innerText = "SYSTEM INITIALIZED";
+            let txt = "Assalamu Alaikum. Welcome to the System. Identity verification required.";
+            typeWriter(txt, voiceText);
+            await speakText(txt);
+            await sleep(300);
+
+            header.innerText = "SYNCING SERVER TIME";
+            txt = "Server operating hours are from 09:30 AM to 10:00 PM.";
+            typeWriter(txt, voiceText);
+            await speakText(txt);
+            
+            toggleComputingSound(true); 
+            for(let i=0; i<30; i++) { progressBar.style.width = i+"%"; await sleep(30); }
+            toggleComputingSound(false); 
+            
+            await logProcess("Syncing Time Zones...", 800);
+
+            header.innerText = "REGISTRATION CHECK";
+            txt = "New users must submit registration forms before 10:00 AM. Contact Admin for access.";
+            typeWriter(txt, voiceText);
+            await speakText(txt);
+
+            toggleComputingSound(true);
+            for(let i=30; i<60; i++) { progressBar.style.width = i+"%"; await sleep(30); }
+            toggleComputingSound(false);
+            
+            await logProcess("Querying User Database...", 1200);
+
+            voiceText.innerHTML = ""; 
+            header.innerText = "SECURITY SCAN";
+            const scanTxt = "Performing biometric and network scan...";
+            typeWriter(scanTxt, voiceText);
+            await speakText(scanTxt);
+            
+            await logProcess("Analyzing Data Packets...", 1500);
+            await logProcess("Verifying IP Address...", 1000);
+            await logProcess("Checking Firewall Status...", 1200);
+
+            body.classList.add('alert-mode');
+            toggleAlarm(true);
+            header.innerText = "WARNING!";
+            txt = "Warning! Violation of protocol will result in a permanent ban. Proceed with caution.";
+            typeWriter(txt, voiceText);
+            logProcess("THREAT LEVEL: CRITICAL", 500);
+            await speakText(txt);
+            await sleep(1000);
+            toggleAlarm(false);
+            body.classList.remove('alert-mode');
+
+            header.innerText = "ASSISTANCE";
+            txt = "If you encounter errors, navigate to the support section to alert the administrator.";
+            typeWriter(txt, voiceText);
+            await speakText(txt);
+            await logProcess("Establishing Admin Link...", 1000);
+            
+            toggleComputingSound(true);
+            for(let i=60; i<=100; i++) { progressBar.style.width = i+"%"; await sleep(20); }
+            toggleComputingSound(false);
+
+            header.innerText = "ACCESS GRANTED";
+            txt = "Authentication successful. Entering server mainframe now. Thank you.";
+            typeWriter(txt, voiceText);
+            await speakText(txt);
+            
+            progressBar.style.backgroundColor = "#fff";
+            progressBar.style.boxShadow = "0 0 20px #fff";
+
+            await sleep(500);
+            await logProcess("BRIDGE CONNECTED. DIVERTING...", 600);
+            
+            playGlitchNoise();
+            body.classList.add('glitch-active');
+            await sleep(400);
+            
+            // --- 2. SET SESSION TOKEN ---
+            sessionStorage.setItem('introShown', 'true');
+            window.location.replace(REDIRECT_URL);
+        });
+    </script>
+</body>
+</html>

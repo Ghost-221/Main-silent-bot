@@ -1,0 +1,245 @@
+<!-- START OF FILE index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- ANTI-CACHE META TAGS -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
+    <meta http-equiv="Expires" content="0" />
+
+    <title>Siͥleͣnͫt Cyber Raid Portal</title>
+    
+    <!-- CHECK INTRO STATUS -->
+    <script>
+        if (sessionStorage.getItem('introShown') !== 'true') {
+            window.location.replace("intro.html");
+        }
+        window.logout = function() {
+            sessionStorage.clear();
+            localStorage.removeItem('user_data');
+            window.location.replace("intro.html");
+        }
+    </script>
+
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="style.css" rel="stylesheet">
+</head>
+<body>
+    <!-- Startup Loader -->
+    <div id="startup-loader" class="startup-loader"><div class="spinner"></div></div>
+
+    <div class="app-container">
+        
+        <!-- Announcement Bar -->
+        <div id="marquee-bar" class="marquee-container" style="display:none;">
+            <div id="marquee-text" class="marquee-text">Welcome to Silent Cyber Raid Portal...</div>
+        </div>
+
+        <!-- AUTH VIEW -->
+        <div id="auth-view" class="view-section" style="display:flex;">
+            <div class="logo-container">
+                <video src="logo.mp4" autoplay loop muted playsinline></video>
+            </div>
+            <h2 style="margin:0 0 30px; color:var(--text); font-weight: 700;">Siͥleͣnͫt <span style="font-weight:300"><b>Cyber Raid Portal</b></span></h2>
+            
+            <!-- Disclaimer Modal -->
+            <div id="reg-disclaimer-modal" style="display:none; width:100%; max-width:380px; background:var(--surface); padding:20px; border-radius:15px; box-shadow:0 10px 40px rgba(0,0,0,0.15); border:1px solid var(--border); margin-bottom:20px; font-family: 'Segoe UI', sans-serif; position: relative; overflow: hidden;">
+                <h3 style="margin:0 0 15px; color:var(--primary); font-size:18px; text-align:center; border-bottom:1px solid var(--border); padding-bottom:10px;">🛡️ নিয়মাবলী ও শর্তসমূহ</h3>
+                <div class="disclaimer-content" style="text-align:left; font-size:13px; color:var(--text-muted); line-height:1.6; max-height:300px; overflow-y:auto; background:var(--bg); padding:15px; border-radius:8px; border:1px solid var(--border);">
+                    <strong>আস-সালামু আলাইকুম।</strong><br>
+                    আমি <b>HELIX</b> — আপনার জাতীয় নাগরিক সেবা সহকারী। 🤖<br>
+                    নিরাপদ ও কার্যকর সেবা প্রদান নিশ্চিত করতে, আমাদের প্ল্যাটফর্ম ব্যবহারের জন্য নিম্নোক্ত নিয়মগুলো মেনে চলা আবশ্যক:<br><br>
+                    <strong style="color:var(--primary); font-size:14px; display:block; margin-bottom:5px;">📜 কমিউনিটি নিয়মাবলি:</strong>
+                    <div style="display:flex; flex-direction:column; gap:8px;">
+                        <div><strong>⏰ ১. সময়সূচি:</strong><br>সেবা প্রতিদিন সকাল ৯:৩০ থেকে রাত ১০:০০ পর্যন্ত চালু থাকবে। নতুন রেজিস্ট্রেশনকৃত অ্যাকাউন্ট প্রতিদিন সকাল ১০:৩০ এর পর আর অ্যাক্টিভ করা যাবে না।</div>
+                        <div><strong>✅ ২. অ্যাক্টিভেশন শর্ত:</strong><br>অ্যাকাউন্ট অ্যাক্টিভ হওয়ার পর প্রথম ৩ দিন, প্রতিদিন কমপক্ষে ১টি সার্ভিস অর্ডার করতে হবে। সম্ভব হলে দৈনিক অর্ডার সংখ্যা ধীরে ধীরে বাড়াতে হবে।</div>
+                        <div><strong>💰 ৩. ব্যালেন্স নীতি:</strong><br>অ্যাকাউন্টে সর্বদা ন্যূনতম ২০০ টাকা ব্যালেন্স থাকতে হবে। ২০০ টাকার নিচে কোনো পরিমাণ ব্যালেন্স অ্যাড করা হবে না।</div>
+                        <div><strong>🚫 ৪. জিরো ব্যালেন্স ও ব্যান নীতি:</strong><br>ব্যালেন্স শূন্য (Zero) থাকা অবস্থায় ৩ বার অর্ডার রিকোয়েস্ট করার চেষ্টা করলে অ্যাকাউন্ট <span style="color:#ef4444; font-weight:bold;">স্থায়ীভাবে ব্যান (Permanent Ban)</span> করা হবে।</div>
+                        <div><strong>🎯 ৫. মাসিক টার্গেট:</strong><br>প্রতি মাসে আপনার অ্যাকাউন্ট থেকে কমপক্ষে ১০টি অর্ডার থাকতে হবে।</div>
+                        <div><strong>⏳ ৬. ধৈর্য্য ধারণ:</strong><br>অর্ডার করার পর প্রসেসিং সম্পন্ন হতে কিছুটা সময় লাগতে পারে। অনুগ্রহ করে ধৈর্য ধরে অপেক্ষা করুন।</div>
+                        <div><strong>📝 ৭. রেজিস্ট্রেশন যাচাই নীতি:</strong><br>ব্যবহৃত ফোন নাম্বারটি আপনার বা পরিবারের কারো এনআইডিতে রেজিস্ট্রেশন করা থাকতে হবে। যাচাই ব্যর্থ হলে অ্যাকাউন্ট অ্যাক্টিভ হবে না।</div>
+                        <div style="background:rgba(16, 185, 129, 0.1); padding:5px; border-radius:4px; border:1px solid rgba(16, 185, 129, 0.2);"><strong>🔑 ৮. পাসওয়ার্ড রিসেট চার্জ:</strong><br>পাসওয়ার্ড রিসেট করার জন্য <span style="color:var(--primary); font-weight:bold;">৩০ টাকা চার্জ</span> প্রযোজ্য হবে। তাই অবশ্যই আপনার ব্যবহৃত সঠিক ইমেইল দিয়ে অ্যাকাউন্ট খুলবেন, কারণ ওই ইমেইলেই রিসেট লিংক পাঠানো হবে।</div>
+                    </div>
+                    <div style="margin-top:15px; background:rgba(239,68,68,0.08); padding:10px; border-radius:6px; border:1px solid rgba(239,68,68,0.2);">
+                        <strong style="color:#ef4444;">⚠️ বিশেষ সতর্কতা:</strong><br>
+                        আমাদের সেবা শুধুমাত্র জনগণের কল্যাণের জন্য। কেউ এটি অসৎ বা বেআইনি কাজে ব্যবহার করলে সে নিজেই দায়ী থাকবে।<br>
+                        এক্ষেত্রে আমাদের টিম <b>SIͥLEͣNͫT Cyber Raid</b> এবং আমি <b>HELIX</b> কোনো দায়ভার বহন করব না।
+                    </div>
+                    <br>
+                    <strong style="display:block; text-align:center; font-size:14px; color:var(--text);">❓ আপনি কি আমাদের সকল নিয়ম মেনে চলতে সম্মত?</strong>
+                </div>
+                <div style="display:flex; gap:10px; margin-top:15px;">
+                    <button class="btn-main" style="background:#ef4444; color:white; border:none; padding:10px; border-radius:6px; width:100%; cursor:pointer; font-weight:bold;" onclick="window.location.reload()">❌ না</button>
+                    <button class="btn-main" style="background:#10b981; color:white; border:none; padding:10px; border-radius:6px; width:100%; cursor:pointer; font-weight:bold;" onclick="window.acceptDisclaimer()">✔️ হ্যাঁ, সম্মত</button>
+                </div>
+            </div>
+            
+            <!-- Auth Inputs -->
+            <div id="auth-form-container" style="width:100%;">
+                <div id="reg-fields" style="display:none; width:100%">
+                    <input id="r-name" class="auth-inp" placeholder="Full Name">
+                    <input id="r-phone" class="auth-inp" placeholder="Phone (NID Registered)" type="number">
+                    <input id="r-telegram" class="auth-inp" placeholder="Telegram Username (@username)" type="text">
+                </div>
+                <div id="auth-inputs" style="width:100%">
+                    <input id="email" class="auth-inp" placeholder="Email Address">
+                    <input id="pass" class="auth-inp" type="password" placeholder="Password">
+                    <button id="auth-btn" class="btn-main" type="button" onclick="window.authAction()">LOGIN <i class="fas fa-arrow-right"></i></button>
+                </div>
+                <p id="toggle-auth-link" onclick="window.toggleAuth()" style="margin-top:25px; font-size:13px; cursor:pointer; color:var(--primary); font-weight:600;"><span id="auth-switch-text">Create New Account</span></p>
+            </div>
+        </div>
+
+        <!-- PENDING VIEW -->
+        <div id="pending-view" class="view-section" style="display:none;">
+            <div style="font-size:60px; color:#f59e0b; margin-bottom:20px; animation: pulse 2s infinite;"><i class="fas fa-user-clock"></i></div>
+            <h2 style="margin:0; color:var(--text);">Account Pending</h2>
+            <p style="text-align:center; color:var(--text-muted); font-size:13px; margin:10px 0 20px;">আপনার রেজিস্ট্রেশন সফল হয়েছে।<br>অ্যাকাউন্ট অ্যাক্টিভ করতে অ্যাডমিনকে মেসেজ দিন।</p>
+            <a href="https://web.telegram.org/a/#8363437161" target="_blank" style="text-decoration:none; width:100%;">
+                <button class="btn-main" style="background:#0ea5e9; margin-bottom:10px;"><i class="fab fa-telegram-plane"></i> Contact Admin</button>
+            </a>
+            <button class="btn-main" onclick="window.location.reload()" style="background:#3b82f6;">Check Status</button>
+            <button class="btn-main" onclick="window.logout()" style="background:#ef4444; margin-top:10px;">Logout</button>
+        </div>
+
+        <!-- REJECTED VIEW (NEW ADDITION) -->
+        <div id="rejected-view" class="view-section" style="display:none;">
+            <div style="font-size:60px; color:#ef4444; margin-bottom:20px;"><i class="fas fa-ban"></i></div>
+            <h2 style="margin:0; color:var(--text);">Registration Rejected</h2>
+            <p style="text-align:center; color:var(--text-muted); font-size:13px; margin:10px 0 20px;">
+                দুঃখিত, আপনার অ্যাকাউন্টটি বাতিল (Rejected) করা হয়েছে।<br>
+                বিস্তারিত জানতে বা পুনরায় আবেদন করতে সাপোর্টে কথা বলুন।
+            </p>
+            <a href="https://web.telegram.org/a/#8363437161" target="_blank" style="text-decoration:none; width:100%;">
+                <button class="btn-main" style="background:#0ea5e9; margin-bottom:10px;"><i class="fab fa-telegram-plane"></i> Support</button>
+            </a>
+            <button class="btn-main" onclick="window.logout()" style="background:#ef4444; margin-top:10px;">Logout</button>
+        </div>
+
+        <!-- HOME VIEW (Dashboard) -->
+        <div id="main-view" style="display:none;">
+            <div class="header-top">
+                <div class="user-info">
+                    <div class="user-logo-small">
+                        <video src="logo.mp4" autoplay loop muted playsinline></video>
+                    </div>
+                    <div>
+                        <h3 style="margin:0; font-size:16px; color:var(--text);">
+                            <span id="u-name">User</span>
+                        </h3>
+                        <small style="color:var(--text-muted); font-size:11px;">Online</small>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="theme-btn" onclick="window.toggleTheme()"><i class="fas fa-adjust"></i></button>
+                </div>
+            </div>
+
+            <div class="balance-card anim-fade">
+                <div class="card-top">
+                    <div class="card-chip"></div>
+                    <div class="card-contactless"><i class="fas fa-wifi"></i></div>
+                </div>
+                <div class="card-balance-section">
+                    <span class="card-label">Available Balance</span>
+                    <div class="bal-amount">৳ <span id="u-bal">0.00</span></div>
+                </div>
+                <div class="card-bottom">
+                    <div class="card-holder" id="card-holder-name">USER NAME</div>
+                    <div class="card-brand">Silent<span style="font-weight:300;">Pay</span></div>
+                </div>
+                <button onclick="window.openPayModal()" class="add-money-btn-floating"><i class="fas fa-plus-circle"></i> Add Money</button>
+            </div>
+
+            <div class="stats-row anim-fade">
+                <div class="stat-box"><span class="stat-num" id="fake-total-orders">...</span><span class="stat-label">Global Orders</span></div>
+            </div>
+
+            <div class="stats-row anim-fade">
+                <div class="stat-box"><span class="stat-num" id="stat-total">0</span><span class="stat-label">My Orders</span></div>
+                <div class="stat-box"><span class="stat-num" id="stat-comp" style="color:var(--success);">0</span><span class="stat-label">Completed</span></div>
+                <div class="stat-box"><span class="stat-num" id="stat-cancel" style="color:var(--danger);">0</span><span class="stat-label">Cancelled</span></div>
+            </div>
+
+            <h3 style="padding:0 20px; color:var(--text); font-size:16px;">My Recent Orders</h3>
+            <div id="history-list" style="padding:0 20px 80px;"></div>
+        </div>
+
+        <!-- PROFILE VIEW -->
+        <div id="profile-view" style="display:none; padding-bottom: 80px; padding-top: 20px;">
+            <div class="profile-header anim-fade">
+                <div class="profile-img"><i class="fas fa-user"></i></div>
+                <h2 id="p-name" style="margin:0; color:var(--text);">User Name</h2>
+                <p id="p-phone" style="color:var(--text-muted); font-size:13px; margin:5px 0;">01xxxxxxxxx</p>
+                <a href="https://web.telegram.org/a/#8363437161" target="_blank" class="tele-btn"><i class="fab fa-telegram-plane"></i> Support</a>
+                <button onclick="window.logout()" style="display:block; margin: 15px auto 0; background:none; border:none; color:#ef4444; font-weight:600; cursor:pointer; font-size: 13px;">Logout</button>
+            </div>
+            <h3 style="padding:0 20px; color:var(--text); font-size:15px;">Deposit History</h3>
+            <div id="deposit-list" style="padding:0 20px;"></div>
+        </div>
+
+        <!-- BOTTOM NAV -->
+        <div class="bottom-nav">
+            <a href="javascript:void(0)" onclick="window.switchTab('home', this)" class="nav-item active"><i class="fas fa-home"></i> Home</a>
+            <a href="services.html" class="nav-item"><i class="fas fa-th-large"></i> Services</a>
+            <a href="javascript:void(0)" onclick="window.switchTab('profile', this)" id="nav-profile" class="nav-item"><i class="fas fa-user"></i> Profile</a>
+        </div>
+    </div>
+
+    <!-- Pay Modal -->
+    <div id="pay-modal" class="modal">
+        <div class="modal-sheet">
+            <div class="close-modal-btn" onclick="window.closePayModal()">✕</div>
+            <h3 style="text-align:center; margin-top:0; color:var(--text);">Add Balance</h3>
+            <div id="pay-step-1" style="text-align:center;">
+                <p style="color:var(--text-muted); font-size:13px;">Scan QR to Pay</p>
+                <img src="https://i.ibb.co/d02mPZ6R/IMG-20251127-WA0001.jpg" style="width:200px; border-radius:12px; margin:10px 0;" alt="QR Code">
+                <button class="btn-main" onclick="window.nextPayStep()">Next Step</button>
+            </div>
+            <div id="pay-step-2" style="display:none;">
+                <input id="d-name" class="auth-inp" placeholder="Sender Name">
+                <input id="d-mobile" class="auth-inp" placeholder="Sender Mobile" type="number">
+                <input id="d-amt" class="auth-inp" type="number" placeholder="Amount (Min 200)">
+                <input id="d-trx" class="auth-inp" placeholder="Transaction ID">
+                <div style="background:var(--bg); padding:10px; border-radius:8px; margin:10px 0; border:1px solid var(--border);">
+                    <label style="font-size:11px; color:var(--text-muted); display:block;">Screenshot Link</label>
+                    <input id="d-img" class="auth-inp" style="margin:0;" placeholder="https://ibb.co/...">
+                    <a href="https://imgbb.com" target="_blank" style="font-size:11px; color:var(--primary); display:block; text-align:right; margin-top:5px;">Upload Here</a>
+                </div>
+                <button class="btn-main" onclick="window.submitDeposit()">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Chat Modal -->
+    <div id="chat-modal" class="modal" style="z-index:210">
+        <div class="modal-sheet" style="height:85vh; padding:0; border-radius:20px 20px 0 0; background:var(--bg);">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:15px 20px; background:var(--surface); border-bottom:1px solid var(--border);">
+                <h3 id="chat-head" style="margin:0; font-size:16px; color:var(--text);">Chat</h3>
+                <i class="fas fa-times-circle" onclick="window.closeChatModal()" style="font-size:24px; color:var(--text-muted); cursor:pointer;"></i>
+            </div>
+            <div id="chat-box" style="flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:8px;"></div>
+            <div id="chat-input-wrap" class="chat-input-area">
+                <input id="chat-in" class="auth-inp" style="margin:0;" placeholder="Type message...">
+                <button onclick="window.sendMsg()" style="background:var(--primary); color:white; border:none; border-radius:12px; width:50px;"><i class="fas fa-paper-plane"></i></button>
+            </div>
+            <div id="chat-closed-wrap" class="chat-closed-ui" style="display:none;"></div>
+        </div>
+    </div>
+
+    <!-- Notice Modal -->
+    <div id="notice-modal" class="popup-overlay">
+        <div class="popup-box">
+            <div class="popup-icon"><i class="fas fa-bullhorn"></i></div>
+            <h3 style="margin:0 0 10px; color:var(--text);">Notice</h3>
+            <p id="notice-text" style="color:var(--text-muted); font-size:14px; margin-bottom:25px;"></p>
+            <button class="btn-main" onclick="window.closeNotice()" style="padding:12px; border-radius:30px; background:linear-gradient(to right, #ec4899, #8b5cf6);">Okay, Got it</button>
+        </div>
+    </div>
+
+    <script type="module" src="script.js"></script>
+</body>
+</html>
