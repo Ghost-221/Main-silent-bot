@@ -26,6 +26,14 @@
                 <button class="theme-btn" onclick="window.toggleTheme()"><i class="fas fa-adjust"></i></button>
             </div>
 
+            <!-- SEARCH BAR ADDED HERE -->
+            <div class="search-wrapper" style="padding: 0 20px 10px;">
+                <div class="search-box">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="search-inp" placeholder="Search services..." oninput="window.renderServiceGrid()">
+                </div>
+            </div>
+
             <!-- Categories & Grid -->
             <div id="category-bar" class="category-scroll anim-fade"></div>
             <div id="dynamic-services-grid" class="services-grid anim-fade">
@@ -56,7 +64,7 @@
         </div>
     </div>
     
-    <!-- FIX: Full Chat Modal Added Here -->
+    <!-- Chat Modal -->
     <div id="chat-modal" class="modal" style="z-index:210">
         <div class="modal-sheet" style="height:85vh; padding:0; border-radius:20px 20px 0 0; background:var(--bg);">
             <div style="display:flex; justify-content:space-between; align-items:center; padding:15px 20px; background:var(--surface); border-bottom:1px solid var(--border);">
@@ -72,7 +80,7 @@
         </div>
     </div>
 
-    <!-- Toast Container (Required for popups) -->
+    <!-- Toast Container -->
     <div id="toast-container" class="toast-container"></div>
 
     <script type="module" src="script.js"></script>
