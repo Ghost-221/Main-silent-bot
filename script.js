@@ -306,12 +306,67 @@ function startLiveNotifications(uid) {
 window.openPayModal = () => { document.getElementById('pay-modal').style.display='flex'; document.getElementById('pay-step-1').style.display='block'; document.getElementById('pay-step-2').style.display='none'; }
 window.closePayModal = () => document.getElementById('pay-modal').style.display='none';
 window.nextPayStep = () => { document.getElementById('pay-step-1').style.display='none'; document.getElementById('pay-step-2').style.display='block'; };
+
+// --- UPDATED SUBMIT DEPOSIT (WITH IMAGE UPLOAD) ---
 window.submitDeposit = async () => {
-    const n = document.getElementById('d-name').value, m = document.getElementById('d-mobile').value, a = document.getElementById('d-amt').value, t = document.getElementById('d-trx').value, i = document.getElementById('d-img').value;
-    if(!n || !m || !a || !t || !i) return window.showPremiumAlert("Missing Info", "Please fill all fields.", true);
+    const n = document.getElementById('d-name').value;
+    const m = document.getElementById('d-mobile').value;
+    const a = document.getElementById('d-amt').value;
+    const t = document.getElementById('d-trx').value;
+    
+    // File Validation
+    const fileInput = document.getElementById('d-proof-file');
+    let fileDataUrl = "";
+
+    if(!n || !m || !a || !t) return window.showPremiumAlert("Missing Info", "Please fill all fields.", true);
     if(Number(a) < 200) return window.showPremiumAlert("Invalid Amount", "Minimum deposit is 200 BDT.", true);
-    await push(ref(db, 'balance_requests'), { uid: user.uid, uName: userData.name, accName: n, accMobile: m, amount: Number(a), trxId: t, screenshot: i, status: 'pending', timestamp: Date.now() });
-    window.closePayModal(); window.showPremiumAlert("Submitted!", "Request sent for approval.");
+    
+    // Image is required for deposit
+    if(fileInput.files.length === 0) {
+        return window.showPremiumAlert("Missing Proof", "Please upload payment screenshot.", true);
+    }
+
+    const btn = document.querySelector('#pay-modal .btn-main');
+    btn.innerHTML = "Uploading..."; btn.disabled = true;
+
+    try {
+        const file = fileInput.files[0];
+        // Check size (2MB)
+        if(file.size > 2 * 1024 * 1024) {
+             btn.innerHTML = "Confirm"; btn.disabled = false;
+             return window.showPremiumAlert("Error", "Image too large (Max 2MB)", true);
+        }
+        fileDataUrl = await readFileAsDataURL(file);
+
+        await push(ref(db, 'balance_requests'), { 
+            uid: user.uid, 
+            uName: userData.name, 
+            accName: n, 
+            accMobile: m, 
+            amount: Number(a), 
+            trxId: t, 
+            screenshot: fileDataUrl, // Save Base64
+            status: 'pending', 
+            timestamp: Date.now() 
+        });
+
+        window.closePayModal(); 
+        window.showPremiumAlert("Submitted!", "Request sent for approval.");
+        
+        // Reset fields
+        document.getElementById('d-name').value = "";
+        document.getElementById('d-mobile').value = "";
+        document.getElementById('d-amt').value = "";
+        document.getElementById('d-trx').value = "";
+        fileInput.value = "";
+        fileInput.parentNode.querySelector('.file-preview-name').innerText = "";
+
+    } catch(e) {
+        console.error(e);
+        window.showPremiumAlert("Error", "Failed to upload image.", true);
+    } finally {
+        btn.innerHTML = "Confirm"; btn.disabled = false;
+    }
 };
 
 function renderCategories() {
@@ -323,7 +378,6 @@ function renderCategories() {
     });
 }
 
-// --- UPDATED RENDER GRID FOR SEARCH ---
 window.renderServiceGrid = () => {
     const grid = document.getElementById('dynamic-services-grid');
     if(!grid) return;
@@ -361,7 +415,7 @@ window.filterServices = (cat, el) => {
     activeCategory = cat;
     document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
     el.classList.add('active');
-    window.renderServiceGrid(); // Call updated function
+    window.renderServiceGrid(); 
 };
 
 window.openOrder = (key) => {
@@ -369,6 +423,18 @@ window.openOrder = (key) => {
     curSvcKey = key; curBasePrice = parseInt(svc.price); curFinalPrice = curBasePrice; 
     document.getElementById('ord-title').innerText = svc.name;
     document.getElementById('ord-cost').innerText = curFinalPrice;
+
+    // --- NEW: Instruction Box Logic ---
+    const instrBox = document.getElementById('ord-instruction');
+    if(instrBox) {
+        if(svc.instruction && svc.instruction.trim() !== "") {
+            instrBox.style.display = 'block';
+            instrBox.innerHTML = svc.instruction.replace(/\n/g, "<br>");
+        } else {
+            instrBox.style.display = 'none';
+            instrBox.innerHTML = "";
+        }
+    }
     
     const formContainer = document.getElementById('ord-dynamic-form');
     formContainer.innerHTML = "";
@@ -387,12 +453,13 @@ window.openOrder = (key) => {
             else if (f.type === 'link') {
                 html = `<input class="auth-inp dynamic-field" type="url" data-label="${f.label}" placeholder="https://...">`;
             }
+            // --- UPDATED FILE UPLOAD (Uses 'file_url' type to be backward compatible but renders file input) ---
             else if (f.type === 'file_url') {
                 html = `
-                    <div style="background:var(--bg); padding:10px; border-radius:8px; border:1px solid var(--border);">
-                        <label style="font-size:11px; color:var(--text-muted); display:block; margin-bottom:5px;">${f.label} (Upload Image & Paste Link)</label>
-                        <input class="auth-inp dynamic-field" data-label="${f.label}" style="margin:0;" placeholder="https://ibb.co/...">
-                        <a href="https://imgbb.com" target="_blank" style="font-size:11px; color:var(--primary); display:block; text-align:right; margin-top:5px;"><i class="fas fa-cloud-upload-alt"></i> Upload Here</a>
+                    <div class="file-upload-wrapper">
+                        <input type="file" class="file-upload-input dynamic-file-field" data-label="${f.label}" accept="image/*" onchange="window.handleFileSelect(this)">
+                        <div class="file-upload-label"><i class="fas fa-cloud-upload-alt"></i> Choose Image from Gallery</div>
+                        <span class="file-preview-name"></span>
                     </div>
                 `;
             }
@@ -423,6 +490,15 @@ window.openOrder = (key) => {
     document.getElementById('ord-modal').style.display = 'flex';
 };
 
+window.handleFileSelect = (input) => {
+    const fileNameSpan = input.parentNode.querySelector('.file-preview-name');
+    if (input.files && input.files[0]) {
+        fileNameSpan.innerText = "Selected: " + input.files[0].name;
+    } else {
+        fileNameSpan.innerText = "";
+    }
+};
+
 window.selectOption = (el, label) => {
     const grp = document.getElementById(`grp-${label}`);
     if (grp) {
@@ -435,26 +511,139 @@ window.selectOption = (el, label) => {
     }
 };
 
-window.confirmOrder = () => {
-    const inputs = document.querySelectorAll('.dynamic-field'); let details = "", empty = false;
-    inputs.forEach(i => { const val = i.value; const lbl = i.getAttribute('data-label'); if(!val) empty = true; details += `${lbl}: ${val}\n`; });
-    if(empty) return window.showPremiumAlert("Missing Info", "Please fill all fields.", true);
+// HELPER: Convert File to Base64
+const readFileAsDataURL = (file) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = (error) => reject(error);
+        reader.readAsDataURL(file);
+    });
+};
+
+// --- UPDATED CONFIRM ORDER (WITH VALIDATION) ---
+window.confirmOrder = async () => {
+    const btn = document.querySelector('#ord-modal .btn-main');
     
+    // 1. Validate Normal Inputs
+    const inputs = document.querySelectorAll('.dynamic-field'); 
+    let details = "";
+    let empty = false;
+    
+    inputs.forEach(i => { 
+        const val = i.value.trim(); // Trim whitespace
+        const lbl = i.getAttribute('data-label'); 
+        if(!val) empty = true; 
+        details += `${lbl}: ${val}\n`; 
+    });
+
+    // 2. Validate File Inputs
+    const fileInputs = document.querySelectorAll('.dynamic-file-field');
+    let fileDataUrl = "";
+    let hasFileField = fileInputs.length > 0;
+    let fileSelected = false;
+
+    if(hasFileField) {
+        const fileInput = fileInputs[0];
+        if(fileInput.files.length > 0) {
+            fileSelected = true;
+            const file = fileInput.files[0];
+            // Size Check (2MB)
+            if(file.size > 2 * 1024 * 1024) {
+                 return window.showPremiumAlert("Error", "Image too large (Max 2MB)", true);
+            }
+            
+            btn.innerHTML = "Uploading..."; btn.disabled = true;
+            try {
+                fileDataUrl = await readFileAsDataURL(file);
+            } catch (e) {
+                console.error(e);
+                btn.innerHTML = "Order Now"; btn.disabled = false;
+                return window.showPremiumAlert("Error", "Failed to read file", true);
+            }
+        }
+    }
+
+    // 3. Final Validation Check
+    if(empty) {
+        if(hasFileField) btn.innerHTML = "Order Now"; btn.disabled = false;
+        return window.showPremiumAlert("Missing Info", "Please fill all text fields.", true);
+    }
+    
+    if(hasFileField && !fileSelected) {
+        if(hasFileField) btn.innerHTML = "Order Now"; btn.disabled = false;
+        return window.showPremiumAlert("Missing Info", "Please select an image.", true);
+    }
+    
+    btn.innerHTML = "Processing..."; btn.disabled = true;
+
     runTransaction(ref(db, 'users/' + user.uid + '/balance'), (bal) => { 
         if (bal >= curFinalPrice) return bal - curFinalPrice; return; 
     }).then(async (res) => { 
         if(res.committed) { 
             const shortId = Math.floor(100000 + Math.random() * 900000).toString(); 
             const newOrderRef = push(ref(db, 'orders')); 
-            await set(newOrderRef, { userId: user.uid, uName: userData.name, service: globalServices[curSvcKey].name, cost: curFinalPrice, details: details, file: "", status: 'pending', timestamp: Date.now(), orderId_visible: shortId }); 
+            
+            await set(newOrderRef, { 
+                userId: user.uid, 
+                uName: userData.name, 
+                service: globalServices[curSvcKey].name, 
+                cost: curFinalPrice, 
+                details: details, 
+                file: fileDataUrl, // Saves Base64 string here
+                status: 'pending', 
+                timestamp: Date.now(), 
+                orderId_visible: shortId 
+            }); 
+            
             window.showPremiumAlert("Success", "Order Placed!"); 
             await push(ref(db, 'chats/'+newOrderRef.key), {s:'sys', t:`Order Placed. ID: ${shortId}`});
             const autoMsg = "আপনার অর্ডার অ্যাডমিন প্যানেলে সাবমিট হয়েছে। একজন অ্যাডমিন শীঘ্রই আপনার সাথে কথা বলবেন। ততক্ষণ চ্যাট বক্সে থাকুন। ধন্যবাদ।";
             await push(ref(db, 'chats/'+newOrderRef.key), {s:'admin', t: autoMsg});
+            
             document.getElementById('ord-modal').style.display='none'; 
             window.openChat(newOrderRef.key, shortId); 
-        } else { window.showPremiumAlert("Failed", "Insufficient Balance!", true); } 
+        } else { 
+            window.showPremiumAlert("Failed", "Insufficient Balance!", true); 
+        } 
+        btn.innerHTML = "Order Now"; btn.disabled = false;
+    }).catch(e => {
+        console.error(e);
+        btn.innerHTML = "Order Now"; btn.disabled = false;
+        window.showPremiumAlert("Error", "Transaction failed", true);
     });
+};
+
+// --- CHAT FILE HANDLING FOR USER ---
+window.handleChatFile = async (input) => {
+    const file = input.files[0];
+    if(!file) return;
+    // 10MB LIMIT
+    if(file.size > 10 * 1024 * 1024) { 
+        window.showPremiumAlert("File too large", "Max size is 10MB.", true);
+        input.value = "";
+        return; 
+    }
+    
+    window.showPremiumAlert("Uploading...", "Please wait.");
+    try {
+        const base64 = await readFileAsDataURL(file);
+        const type = file.type.startsWith('image/') ? 'image' : 'file';
+        
+        if(activeChat) {
+            await push(ref(db, 'chats/'+activeChat), {
+                s: user.uid,
+                type: type,
+                file: base64,
+                fileName: file.name,
+                t: "",
+                timestamp: Date.now()
+            });
+            input.value = ""; // Clear input
+        }
+    } catch(e) {
+        window.showPremiumAlert("Error", "Failed to send file.", true);
+    }
 };
 
 window.openChat = (k, id) => { 
@@ -481,47 +670,44 @@ window.openChat = (k, id) => {
         const b = document.getElementById('chat-box'); b.innerHTML=""; 
         s.forEach(c => { 
             const m=c.val(); 
-            const linkify = (text) => {
-                const urlRegex = /(https?:\/\/[^\s]+)/g;
-                return text.replace(urlRegex, function(url) {
-                    return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:inherit; text-decoration:underline; font-weight:bold; word-break: break-all;">${url}</a>`;
-                });
-            };
-            const msgContent = linkify(m.t);
-            const copyIcon = `<i class="fas fa-copy copy-btn-icon" onclick="event.stopPropagation(); window.copyText('${m.t.replace(/'/g, "\\'")}')"></i>`;
-            b.innerHTML += `<div class="msg-row ${m.s===user.uid?'me':'adm'}"><div class="msg ${m.s===user.uid?'msg-me':'msg-adm'}"><span>${msgContent}</span>${copyIcon}</div></div>`; 
+            const isMe = (m.s === user.uid);
+            let content = "";
+
+            if(m.type === 'image') {
+                // Image message
+                content = `<img src="${m.file}" class="chat-img-preview"><br><a href="${m.file}" download="${m.fileName || 'image.jpg'}" class="chat-file-download"><i class="fas fa-download"></i> Download Image</a>`;
+            } else if (m.type === 'file') {
+                // File message
+                content = `<div style="display:flex;align-items:center;gap:10px;"><i class="fas fa-file" style="font-size:20px;"></i> <span>${m.fileName || 'File'}</span></div><a href="${m.file}" download="${m.fileName || 'file'}" class="chat-file-download"><i class="fas fa-download"></i> Download File</a>`;
+            } else {
+                // Text message
+                const linkify = (text) => {
+                    const urlRegex = /(https?:\/\/[^\s]+)/g;
+                    return text.replace(urlRegex, function(url) {
+                        return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:inherit; text-decoration:underline; font-weight:bold; word-break: break-all;">${url}</a>`;
+                    });
+                };
+                const msgContent = linkify(m.t || "");
+                const copyIcon = `<i class="fas fa-copy copy-btn-icon" onclick="event.stopPropagation(); window.copyText('${(m.t || "").replace(/'/g, "\\'")}')"></i>`;
+                content = `<span>${msgContent}</span>${copyIcon}`;
+            }
+
+            b.innerHTML += `<div class="msg-row ${isMe?'me':'adm'}"><div class="msg ${isMe?'msg-me':'msg-adm'}">${content}</div></div>`; 
         }); 
         b.scrollTop = b.scrollHeight; 
     }); 
 };
 
-window.sendMsg = () => { const t = document.getElementById('chat-in').value; if(t && activeChat) { push(ref(db, 'chats/'+activeChat), {s:user.uid, t:t}); document.getElementById('chat-in').value=""; } };
+window.sendMsg = () => { const t = document.getElementById('chat-in').value; if(t && activeChat) { push(ref(db, 'chats/'+activeChat), {s:user.uid, t:t, type: 'text', timestamp: Date.now()}); document.getElementById('chat-in').value=""; } };
 window.closeChatModal = () => { document.getElementById('chat-modal').style.display='none'; if (chatTimerInterval) clearInterval(chatTimerInterval); if(orderStatusListener) off(orderStatusListener); };
 
 // ================= SECURITY MODULE =================
-
-// 1. Disable Right Click
 document.addEventListener('contextmenu', event => event.preventDefault());
-
-// 2. Disable Keyboard Shortcuts (F12, Ctrl+U, etc)
 document.onkeydown = function(e) {
     if (e.keyCode === 123 || (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74)) || (e.ctrlKey && e.keyCode === 85)) {
         return false;
     }
 };
-
-// 3. Anti-Screenshot / Blur on Focus Loss
-window.addEventListener('blur', () => {
-    document.body.classList.add('blur-mode');
-    document.title = "⚠️ Security Alert";
-});
-
-window.addEventListener('focus', () => {
-    document.body.classList.remove('blur-mode');
-    document.title = "Siͥleͣnͫt Cyber Raid Portal";
-});
-
-// 4. Disable Dragging Images
-document.querySelectorAll('img').forEach(img => {
-    img.addEventListener('dragstart', e => e.preventDefault());
-});
+window.addEventListener('blur', () => { document.body.classList.add('blur-mode'); document.title = "⚠️ Security Alert"; });
+window.addEventListener('focus', () => { document.body.classList.remove('blur-mode'); document.title = "Siͥleͣnͫt Cyber Raid Portal"; });
+document.querySelectorAll('img').forEach(img => { img.addEventListener('dragstart', e => e.preventDefault()); });
