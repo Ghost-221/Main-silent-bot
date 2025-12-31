@@ -71,52 +71,64 @@ function fallbackCopyText(text) {
     document.body.removeChild(textArea);
 }
 
-// --- NEW DOWNLOAD UTILITY (FIXED BLOB DOWNLOAD) ---
+// ==========================================
+// --- ULTIMATE FILE HANDLER (PDF/IMG/ZIP) ---
+// ==========================================
+
+// Helper: Convert Base64 to Blob
+const base64ToBlob = (base64Data) => {
+    const parts = base64Data.split(',');
+    const mime = parts[0].match(/:(.*?);/)[1];
+    const bstr = atob(parts[1]);
+    let n = bstr.length;
+    const u8arr = new Uint8Array(n);
+    while (n--) { u8arr[n] = bstr.charCodeAt(n); }
+    return new Blob([u8arr], { type: mime });
+};
+
+// 1. Download Function (Forces Save)
 window.downloadMedia = (base64Data, fileName) => {
     try {
-        // Check if valid base64
-        if (!base64Data || !base64Data.includes(',')) {
-            window.showPremiumAlert("Error", "Invalid file data.", true);
-            return;
-        }
-
-        // Split metadata and data
-        const parts = base64Data.split(',');
-        const mime = parts[0].match(/:(.*?);/)[1];
-        const bstr = atob(parts[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
-        }
-
-        // Create Blob
-        const blob = new Blob([u8arr], { type: mime });
+        if (!base64Data || !base64Data.includes(',')) return window.showPremiumAlert("Error", "Invalid file.", true);
+        
+        const blob = base64ToBlob(base64Data);
         const url = window.URL.createObjectURL(blob);
-
-        // Create Anchor and Trigger Download
+        
         const a = document.createElement('a');
+        a.style.display = 'none';
         a.href = url;
         a.download = fileName || 'download';
         document.body.appendChild(a);
         a.click();
         
-        // Cleanup
-        setTimeout(() => {
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }, 100);
-
+        setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 2000);
     } catch (e) {
-        console.error(e);
-        window.showPremiumAlert("Download Failed", "Could not process file.", true);
+        window.showPremiumAlert("Download Error", "Try using the 'View' button.", true);
     }
 };
 
-// --- IMAGE COMPRESSION & FILE HANDLER (FIXED) ---
+// 2. View Function (Opens PDF/Image in new tab for saving)
+window.viewMedia = (base64Data) => {
+    try {
+        if (!base64Data || !base64Data.includes(',')) return;
+        
+        const blob = base64ToBlob(base64Data);
+        const url = window.URL.createObjectURL(blob);
+        
+        // Open in new window
+        const win = window.open(url, '_blank');
+        
+        if (!win) {
+            window.showPremiumAlert("Popup Blocked", "Please allow popups or use Download.", true);
+        }
+    } catch (e) {
+        window.showPremiumAlert("Error", "Could not open file.", true);
+    }
+};
+
+// --- IMAGE COMPRESSION ---
 const processFile = (file) => {
     return new Promise((resolve, reject) => {
-        // If image, compress it
         if (file.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -126,28 +138,19 @@ const processFile = (file) => {
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-                    // Resize logic: Max 1024px width/height
-                    const MAX_WIDTH = 1024;
-                    const MAX_HEIGHT = 1024;
-                    let width = img.width;
-                    let height = img.height;
-
-                    if (width > height) {
-                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                    } else {
-                        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
+                    const MAX_WIDTH = 1024; const MAX_HEIGHT = 1024;
+                    let width = img.width; let height = img.height;
+                    if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } } 
+                    else { if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; } }
+                    canvas.width = width; canvas.height = height;
                     ctx.drawImage(img, 0, 0, width, height);
-                    // Compress to JPEG 0.7 quality
                     resolve(canvas.toDataURL('image/jpeg', 0.7)); 
                 };
                 img.onerror = (err) => reject(err);
             };
             reader.onerror = (err) => reject(err);
         } else {
-            // Non-image files (PDF/Txt etc) - Standard Read
+            // PDF or Other Files - Read as Base64 directly
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result);
             reader.onerror = (error) => reject(error);
@@ -187,8 +190,7 @@ onValue(ref(db, 'settings'), (s) => {
             if (data.system_status === 'off') {
                 if(icon) icon.innerHTML = '<i class="fas fa-power-off" style="color:#ef4444;"></i>'; 
                 if(title) title.innerText = "System Offline"; 
-                const defMsg = "সিস্টেম অফলাইন।";
-                if(desc) desc.innerText = data.off_message || defMsg; 
+                if(desc) desc.innerText = data.off_message || "সিস্টেম অফলাইন।"; 
                 desc.style.whiteSpace = "pre-line";
             } else if (data.system_status === 'maintenance') {
                 if(icon) icon.innerHTML = '<i class="fas fa-tools pulse-anim" style="color:#f59e0b;"></i>'; 
@@ -241,7 +243,7 @@ setInterval(updateTotalDisplay, 30000);
 const sysHTML = `<div id="system-overlay" class="system-overlay"><div class="sys-box"><div id="sys-icon" class="sys-icon"></div><h2 id="sys-title" class="sys-title"></h2><p id="sys-desc" class="sys-desc"></p><div id="sys-countdown" class="countdown-box" style="display:none;"></div></div></div>`;
 document.body.insertAdjacentHTML('beforeend', sysHTML);
 
-// --- AUTH LOGIC ---
+// --- AUTH ---
 onAuthStateChanged(auth, u => {
     const loader = document.getElementById('startup-loader');
     const navBar = document.querySelector('.bottom-nav');
@@ -327,7 +329,6 @@ window.authAction = async () => {
 
 window.logout = () => signOut(auth).then(() => window.location.href = 'index.html');
 
-// --- HISTORY LOADING (WITH 12H CHECK) ---
 function loadHistory() { 
     onValue(ref(db, 'orders'), s => { 
         const list = document.getElementById('history-list'); if(!list) return; list.innerHTML = ""; 
@@ -337,20 +338,19 @@ function loadHistory() {
         if(allOrders.length === 0) list.innerHTML = '<p style="text-align:center; font-size:12px; color:var(--text-muted)">No orders yet.</p>';
         
         allOrders.forEach(v => {
-            // --- STRICT 12H EXPIRY CHECK ---
+            // 12H Check
             let isExpired = false; 
             if(v.status === 'completed' && v.completed_at) { 
-                if((Date.now() - v.completed_at) > 43200000) isExpired = true; // 12H = 43200000 ms
+                if((Date.now() - v.completed_at) > 43200000) isExpired = true; 
             }
             
-            // Only show button if NOT expired and NOT cancelled
+            // Only show chat if NOT expired
             let chatBtn = (!isExpired && v.status !== 'cancelled') 
                 ? `<button class="chat-btn-small" onclick="window.openChat('${v.key}', '${v.orderId_visible}')"><i class="fas fa-comments"></i></button>` 
                 : '';
                 
             let clr = v.status==='completed'?'#10b981':(v.status==='cancelled'?'#ef4444':'#f59e0b'); 
             let noteHTML = (v.status === 'cancelled' && v.admin_note) ? `<div style="font-size:11px; color:#ef4444; background:#fef2f2; padding:5px; border-radius:4px; margin-top:5px;">Reason: ${v.admin_note}</div>` : ""; 
-            
             list.innerHTML += `<div class="order-card"><div class="order-top"><b style="font-size:14px; color:var(--text);">${v.service}</b>${chatBtn}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--text-muted);"><span>#${v.orderId_visible}</span><span class="status-badge" style="color:${clr}; background:${clr}15;">${v.status.toUpperCase()}</span></div>${noteHTML}<div style="font-size:10px; color:var(--text-muted); text-align:right;">${new Date(v.timestamp).toLocaleDateString()}</div></div>`; 
         });
         if(document.getElementById('stat-total')) { document.getElementById('stat-total').innerText = t; document.getElementById('stat-comp').innerText = c; document.getElementById('stat-cancel').innerText = x; } 
@@ -452,7 +452,7 @@ window.openOrder = (key) => {
             else if (f.type === 'link') html = `<input class="auth-inp dynamic-field" type="url" data-label="${f.label}" placeholder="https://...">`;
             // Fixed Image Input with Label
             else if (f.type === 'file_url') {
-                html = `<div class="form-group"><label class="input-label" style="margin-bottom: 5px; display: block;">${f.label}</label><div class="file-upload-wrapper"><input type="file" class="file-upload-input dynamic-file-field" data-label="${f.label}" accept="image/*" onchange="window.handleFileSelect(this)"><div class="file-upload-label"><i class="fas fa-cloud-upload-alt"></i> Choose Image from Gallery</div><span class="file-preview-name"></span></div></div>`;
+                html = `<div class="form-group"><label class="input-label" style="margin-bottom: 5px; display: block;">${f.label}</label><div class="file-upload-wrapper"><input type="file" class="file-upload-input dynamic-file-field" data-label="${f.label}" accept="*/*" onchange="window.handleFileSelect(this)"><div class="file-upload-label"><i class="fas fa-cloud-upload-alt"></i> Choose File/Image</div><span class="file-preview-name"></span></div></div>`;
             }
             else if(f.type === 'radio_grid') {
                 const opts = f.options.split(',').map(s => s.trim()); let boxes = "";
@@ -474,9 +474,9 @@ window.confirmOrder = async () => {
     const btn = document.querySelector('#ord-modal .btn-main'); const inputs = document.querySelectorAll('.dynamic-field'); let details = ""; let empty = false;
     inputs.forEach(i => { const val = i.value.trim(); const lbl = i.getAttribute('data-label'); if(!val) empty = true; details += `${lbl}: ${val}\n`; });
     const fileInputs = document.querySelectorAll('.dynamic-file-field'); let fileDataUrl = ""; let hasFileField = fileInputs.length > 0; let fileSelected = false;
-    if(hasFileField) { const fileInput = fileInputs[0]; if(fileInput.files.length > 0) { fileSelected = true; const file = fileInput.files[0]; if(file.size > 10 * 1024 * 1024) return window.showPremiumAlert("Error", "Image too large (Max 10MB)", true); btn.innerHTML = "Uploading..."; btn.disabled = true; try { fileDataUrl = await processFile(file); } catch (e) { btn.innerHTML = "Order Now"; btn.disabled = false; return window.showPremiumAlert("Error", "Failed to read file", true); } } }
+    if(hasFileField) { const fileInput = fileInputs[0]; if(fileInput.files.length > 0) { fileSelected = true; const file = fileInput.files[0]; if(file.size > 10 * 1024 * 1024) return window.showPremiumAlert("Error", "File too large (Max 10MB)", true); btn.innerHTML = "Uploading..."; btn.disabled = true; try { fileDataUrl = await processFile(file); } catch (e) { btn.innerHTML = "Order Now"; btn.disabled = false; return window.showPremiumAlert("Error", "Failed to read file", true); } } }
     if(empty) { if(hasFileField) { btn.innerHTML = "Order Now"; btn.disabled = false; } return window.showPremiumAlert("Missing Info", "Please fill all text fields.", true); }
-    if(hasFileField && !fileSelected) { if(hasFileField) { btn.innerHTML = "Order Now"; btn.disabled = false; } return window.showPremiumAlert("Missing Info", "Please select an image.", true); }
+    if(hasFileField && !fileSelected) { if(hasFileField) { btn.innerHTML = "Order Now"; btn.disabled = false; } return window.showPremiumAlert("Missing Info", "Please select a file.", true); }
     btn.innerHTML = "Processing..."; btn.disabled = true;
     runTransaction(ref(db, 'users/' + user.uid + '/balance'), (bal) => { if (bal >= curFinalPrice) return bal - curFinalPrice; return; }).then(async (res) => { 
         if(res.committed) { 
@@ -505,11 +505,11 @@ window.handleChatFile = async (input) => {
     } catch(e) { window.showPremiumAlert("Error", "Failed to send file.", true); }
 };
 
-// --- CHAT LOGIC (12H AUTO DELETE + UPDATED DOWNLOAD FIX) ---
+// --- CHAT LOGIC (12H AUTO DELETE + TOP LEVEL PDF/IMG FIX) ---
 window.openChat = (k, id) => { 
     const chatModal = document.getElementById('chat-modal'); if(!chatModal) return;
     
-    // Clear previous chat immediately
+    // Clear & Load
     document.getElementById('chat-box').innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
     
     activeChat = k; 
@@ -518,22 +518,19 @@ window.openChat = (k, id) => {
     const inp = document.getElementById('chat-input-wrap'), cls = document.getElementById('chat-closed-wrap'); 
     if (orderStatusListener) off(orderStatusListener); 
     
-    // 12H Expiry Logic
     const EXPIRY_TIME_MS = 12 * 60 * 60 * 1000;
 
     orderStatusListener = onValue(ref(db, 'orders/' + k), (s) => { 
         const data = s.val(); 
         
-        // If order removed or cancelled, close chat
         if(!data || data.status === 'cancelled') { window.closeChatModal(); return; } 
         
         if (chatTimerInterval) clearInterval(chatTimerInterval); 
         
-        // --- EXPIRY CHECK INSIDE OPEN CHAT ---
+        // Expiry Check
         if (data.status === 'completed' && data.completed_at) {
             const timePassed = Date.now() - data.completed_at;
             if (timePassed > EXPIRY_TIME_MS) {
-                // Time up! Remove chat data and close modal
                 remove(ref(db, 'chats/'+k));
                 window.closeChatModal();
                 window.showPremiumAlert("Chat Expired", "12 hours passed. Chat is now closed.", true);
@@ -567,7 +564,6 @@ window.openChat = (k, id) => {
         } 
     }); 
     
-    // Open Modal
     chatModal.style.display='flex'; 
 
     let isChatInit = true;
@@ -585,25 +581,40 @@ window.openChat = (k, id) => {
         chatData.forEach(m => { 
             const isMe = (m.s === user.uid); let content = "";
             
-            // --- UPDATED DOWNLOAD HANDLER ---
+            // --- ULTIMATE FILE RENDERING LOGIC ---
             if(m.type === 'image') {
                 content = `
                     <img src="${m.file}" class="chat-img-preview"><br>
-                    <button class="chat-file-download" onclick="window.downloadMedia('${m.file}', '${m.fileName || 'image.jpg'}')">
-                        <i class="fas fa-download"></i> Download Image
-                    </button>`;
+                    <div style="display:flex; gap:5px; margin-top:5px;">
+                        <button class="chat-file-download" onclick="window.downloadMedia('${m.file}', '${m.fileName || 'image.jpg'}')">
+                            <i class="fas fa-download"></i> Save
+                        </button>
+                        <button class="chat-file-download" style="background:rgba(0,0,0,0.2);" onclick="window.viewMedia('${m.file}')">
+                            <i class="fas fa-eye"></i> View
+                        </button>
+                    </div>`;
             } else if (m.type === 'file') {
+                // PDF CHECK
+                let isPdf = m.file.includes('application/pdf');
+                let iconClass = isPdf ? "fa-file-pdf" : "fa-file";
+                let iconColor = isPdf ? "#ef4444" : "var(--text)";
+                
                 content = `
-                    <div style="display:flex;align-items:center;gap:10px;">
-                        <i class="fas fa-file" style="font-size:20px;"></i> <span>${m.fileName || 'File'}</span>
+                    <div style="display:flex;align-items:center;gap:10px; margin-bottom:6px;">
+                        <i class="fas ${iconClass}" style="font-size:24px; color:${iconColor};"></i> 
+                        <span style="font-size:12px; font-weight:600;">${m.fileName || 'Document'}</span>
                     </div>
-                    <button class="chat-file-download" onclick="window.downloadMedia('${m.file}', '${m.fileName || 'file.txt'}')">
-                        <i class="fas fa-download"></i> Download File
-                    </button>`;
+                    <div style="display:flex; gap:5px;">
+                        <button class="chat-file-download" onclick="window.downloadMedia('${m.file}', '${m.fileName || 'file'}')">
+                            <i class="fas fa-download"></i> Save
+                        </button>
+                         <button class="chat-file-download" style="background:rgba(0,0,0,0.2);" onclick="window.viewMedia('${m.file}')">
+                            <i class="fas fa-external-link-alt"></i> Open
+                        </button>
+                    </div>`;
             } else {
                 const linkify = (text) => { const urlRegex = /(https?:\/\/[^\s]+)/g; return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:inherit; text-decoration:underline; font-weight:bold; word-break: break-all;">${url}</a>`; }); };
                 const msgContent = linkify(m.t || "");
-                // Safe Copy Logic
                 const safeText = encodeURIComponent(m.t || "");
                 const copyIcon = `<i class="fas fa-copy copy-btn-icon" onclick="event.stopPropagation(); window.copyText(decodeURIComponent('${safeText}'))"></i>`;
                 const textColor = isMe ? 'white' : 'var(--text)';
