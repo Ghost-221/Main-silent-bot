@@ -71,6 +71,48 @@ function fallbackCopyText(text) {
     document.body.removeChild(textArea);
 }
 
+// --- NEW DOWNLOAD UTILITY (FIXED BLOB DOWNLOAD) ---
+window.downloadMedia = (base64Data, fileName) => {
+    try {
+        // Check if valid base64
+        if (!base64Data || !base64Data.includes(',')) {
+            window.showPremiumAlert("Error", "Invalid file data.", true);
+            return;
+        }
+
+        // Split metadata and data
+        const parts = base64Data.split(',');
+        const mime = parts[0].match(/:(.*?);/)[1];
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+
+        // Create Blob
+        const blob = new Blob([u8arr], { type: mime });
+        const url = window.URL.createObjectURL(blob);
+
+        // Create Anchor and Trigger Download
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName || 'download';
+        document.body.appendChild(a);
+        a.click();
+        
+        // Cleanup
+        setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }, 100);
+
+    } catch (e) {
+        console.error(e);
+        window.showPremiumAlert("Download Failed", "Could not process file.", true);
+    }
+};
+
 // --- IMAGE COMPRESSION & FILE HANDLER (FIXED) ---
 const processFile = (file) => {
     return new Promise((resolve, reject) => {
@@ -285,6 +327,7 @@ window.authAction = async () => {
 
 window.logout = () => signOut(auth).then(() => window.location.href = 'index.html');
 
+// --- HISTORY LOADING (WITH 12H CHECK) ---
 function loadHistory() { 
     onValue(ref(db, 'orders'), s => { 
         const list = document.getElementById('history-list'); if(!list) return; list.innerHTML = ""; 
@@ -292,11 +335,22 @@ function loadHistory() {
         s.forEach(o => { const v = o.val(); if(v.userId === user.uid) { v.key = o.key; allOrders.push(v); t++; if(v.status==='completed') c++; if(v.status==='cancelled') x++; } }); 
         allOrders.sort((a,b) => b.timestamp - a.timestamp);
         if(allOrders.length === 0) list.innerHTML = '<p style="text-align:center; font-size:12px; color:var(--text-muted)">No orders yet.</p>';
+        
         allOrders.forEach(v => {
-            let isExpired = false; if(v.status === 'completed' && v.completed_at) { if((Date.now() - v.completed_at) > 43200000) isExpired = true; } // 12H CHECK
-            let chatBtn = (!isExpired && v.status !== 'cancelled') ? `<button class="chat-btn-small" onclick="window.openChat('${v.key}', '${v.orderId_visible}')"><i class="fas fa-comments"></i></button>` : '';
+            // --- STRICT 12H EXPIRY CHECK ---
+            let isExpired = false; 
+            if(v.status === 'completed' && v.completed_at) { 
+                if((Date.now() - v.completed_at) > 43200000) isExpired = true; // 12H = 43200000 ms
+            }
+            
+            // Only show button if NOT expired and NOT cancelled
+            let chatBtn = (!isExpired && v.status !== 'cancelled') 
+                ? `<button class="chat-btn-small" onclick="window.openChat('${v.key}', '${v.orderId_visible}')"><i class="fas fa-comments"></i></button>` 
+                : '';
+                
             let clr = v.status==='completed'?'#10b981':(v.status==='cancelled'?'#ef4444':'#f59e0b'); 
             let noteHTML = (v.status === 'cancelled' && v.admin_note) ? `<div style="font-size:11px; color:#ef4444; background:#fef2f2; padding:5px; border-radius:4px; margin-top:5px;">Reason: ${v.admin_note}</div>` : ""; 
+            
             list.innerHTML += `<div class="order-card"><div class="order-top"><b style="font-size:14px; color:var(--text);">${v.service}</b>${chatBtn}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--text-muted);"><span>#${v.orderId_visible}</span><span class="status-badge" style="color:${clr}; background:${clr}15;">${v.status.toUpperCase()}</span></div>${noteHTML}<div style="font-size:10px; color:var(--text-muted); text-align:right;">${new Date(v.timestamp).toLocaleDateString()}</div></div>`; 
         });
         if(document.getElementById('stat-total')) { document.getElementById('stat-total').innerText = t; document.getElementById('stat-comp').innerText = c; document.getElementById('stat-cancel').innerText = x; } 
@@ -451,10 +505,15 @@ window.handleChatFile = async (input) => {
     } catch(e) { window.showPremiumAlert("Error", "Failed to send file.", true); }
 };
 
-// --- CHAT LOGIC (12H AUTO DELETE, COPY FIX, TEXT COLOR) ---
+// --- CHAT LOGIC (12H AUTO DELETE + UPDATED DOWNLOAD FIX) ---
 window.openChat = (k, id) => { 
     const chatModal = document.getElementById('chat-modal'); if(!chatModal) return;
-    activeChat = k; chatModal.style.display='flex'; 
+    
+    // Clear previous chat immediately
+    document.getElementById('chat-box').innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
+    
+    activeChat = k; 
+    
     if(document.getElementById('chat-head')) document.getElementById('chat-head').innerText = "Chat #" + id; 
     const inp = document.getElementById('chat-input-wrap'), cls = document.getElementById('chat-closed-wrap'); 
     if (orderStatusListener) off(orderStatusListener); 
@@ -463,38 +522,61 @@ window.openChat = (k, id) => {
     const EXPIRY_TIME_MS = 12 * 60 * 60 * 1000;
 
     orderStatusListener = onValue(ref(db, 'orders/' + k), (s) => { 
-        const data = s.val(); if(!data) return; const status = data.status; 
-        if (status === 'cancelled') { window.closeChatModal(); return; } 
+        const data = s.val(); 
+        
+        // If order removed or cancelled, close chat
+        if(!data || data.status === 'cancelled') { window.closeChatModal(); return; } 
+        
         if (chatTimerInterval) clearInterval(chatTimerInterval); 
-        if (status === 'pending') { inp.style.display = 'flex'; cls.style.display = 'none'; } 
-        else if (status === 'processing') { inp.style.display = 'none'; cls.style.display = 'block'; cls.className = 'chat-closed-ui processing'; cls.innerHTML = '<i class="fas fa-lock"></i> অর্ডার প্রসেসিং এ আছে। চ্যাট বন্ধ।'; } 
-        else if (status === 'completed') { 
-            inp.style.display = 'none'; cls.style.display = 'block'; cls.className = 'chat-closed-ui'; 
-            
-            // Check Expiry (Order Completion + 12h)
-            if (Date.now() - (data.completed_at || 0) > EXPIRY_TIME_MS) {
+        
+        // --- EXPIRY CHECK INSIDE OPEN CHAT ---
+        if (data.status === 'completed' && data.completed_at) {
+            const timePassed = Date.now() - data.completed_at;
+            if (timePassed > EXPIRY_TIME_MS) {
+                // Time up! Remove chat data and close modal
                 remove(ref(db, 'chats/'+k));
                 window.closeChatModal();
-                window.showPremiumAlert("Chat Expired", "12 hours passed since completion.", true);
+                window.showPremiumAlert("Chat Expired", "12 hours passed. Chat is now closed.", true);
                 return;
             }
+        }
 
+        if (data.status === 'pending') { 
+            inp.style.display = 'flex'; cls.style.display = 'none'; 
+        } else if (data.status === 'processing') { 
+            inp.style.display = 'none'; cls.style.display = 'block'; cls.className = 'chat-closed-ui processing'; 
+            cls.innerHTML = '<i class="fas fa-lock"></i> অর্ডার প্রসেসিং এ আছে। চ্যাট বন্ধ।'; 
+        } else if (data.status === 'completed') { 
+            inp.style.display = 'none'; cls.style.display = 'block'; cls.className = 'chat-closed-ui'; 
+            
             const updateTimer = () => { 
                 const diff = EXPIRY_TIME_MS - (Date.now() - (data.completed_at || 0)); 
                 if (diff <= 0) { 
-                    clearInterval(chatTimerInterval); remove(ref(db, 'chats/'+k)); window.closeChatModal(); 
+                    clearInterval(chatTimerInterval); 
+                    remove(ref(db, 'chats/'+k)); 
+                    window.closeChatModal(); 
+                    window.showPremiumAlert("Chat Expired", "Time limit reached.", true);
                 } else { 
                     const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)); 
-                    cls.innerHTML = `<i class="fas fa-history"></i> Chat expiring in: ${h}h`; 
+                    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                    cls.innerHTML = `<i class="fas fa-history"></i> Chat expiring in: ${h}h ${m}m`; 
                 } 
             }; 
-            updateTimer(); chatTimerInterval = setInterval(updateTimer, 60000); 
+            updateTimer(); 
+            chatTimerInterval = setInterval(updateTimer, 60000); 
         } 
     }); 
+    
+    // Open Modal
+    chatModal.style.display='flex'; 
 
     let isChatInit = true;
     onValue(ref(db, 'chats/'+k), s => { 
-        const b = document.getElementById('chat-box'); b.innerHTML=""; const chatData = []; let newMsgFound = false;
+        const b = document.getElementById('chat-box'); 
+        if(!b) return;
+        b.innerHTML=""; 
+        const chatData = []; let newMsgFound = false;
+        
         if(s.exists()) {
             s.forEach(c => { const m = c.val(); chatData.push(m); if (!isChatInit && m.s !== user.uid) newMsgFound = true; });
         }
@@ -502,9 +584,23 @@ window.openChat = (k, id) => {
         
         chatData.forEach(m => { 
             const isMe = (m.s === user.uid); let content = "";
-            if(m.type === 'image') content = `<img src="${m.file}" class="chat-img-preview"><br><a href="${m.file}" download="${m.fileName || 'image.jpg'}" class="chat-file-download"><i class="fas fa-download"></i> Download Image</a>`;
-            else if (m.type === 'file') content = `<div style="display:flex;align-items:center;gap:10px;"><i class="fas fa-file" style="font-size:20px;"></i> <span>${m.fileName || 'File'}</span></div><a href="${m.file}" download="${m.fileName || 'file'}" class="chat-file-download"><i class="fas fa-download"></i> Download File</a>`;
-            else {
+            
+            // --- UPDATED DOWNLOAD HANDLER ---
+            if(m.type === 'image') {
+                content = `
+                    <img src="${m.file}" class="chat-img-preview"><br>
+                    <button class="chat-file-download" onclick="window.downloadMedia('${m.file}', '${m.fileName || 'image.jpg'}')">
+                        <i class="fas fa-download"></i> Download Image
+                    </button>`;
+            } else if (m.type === 'file') {
+                content = `
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <i class="fas fa-file" style="font-size:20px;"></i> <span>${m.fileName || 'File'}</span>
+                    </div>
+                    <button class="chat-file-download" onclick="window.downloadMedia('${m.file}', '${m.fileName || 'file.txt'}')">
+                        <i class="fas fa-download"></i> Download File
+                    </button>`;
+            } else {
                 const linkify = (text) => { const urlRegex = /(https?:\/\/[^\s]+)/g; return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:inherit; text-decoration:underline; font-weight:bold; word-break: break-all;">${url}</a>`; }); };
                 const msgContent = linkify(m.t || "");
                 // Safe Copy Logic
