@@ -2,6 +2,15 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
 import { getDatabase, ref, set, push, onValue, runTransaction, off, query, orderByChild, equalTo, onChildChanged, remove } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
+// --- LOAD PDF ENGINE (PDF.JS) AUTOMATICALLY ---
+const pdfScript = document.createElement('script');
+pdfScript.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+pdfScript.onload = () => {
+    // Set worker
+    pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+};
+document.head.appendChild(pdfScript);
+
 // Prevent user script on admin page
 if (window.location.pathname.includes('admin.html')) {
     throw new Error("User script halted on Admin Page.");
@@ -25,15 +34,32 @@ let activeChat = null, chatTimerInterval = null, maintInterval = null, orderStat
 let activeCategory = "All";
 let globalNoticeData = null; 
 
-// --- VIEWER CSS (UPDATED FOR SCROLLING) ---
+// --- ADVANCED VIEWER CSS ---
 const viewerStyle = document.createElement('style');
 viewerStyle.innerHTML = `
-    .media-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000000; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    .media-container { width: 100%; height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 60px; padding-bottom: 20px; }
-    .media-content { max-width: 100%; width: auto; height: auto; object-fit: contain; }
-    .media-pdf-frame { width: 100%; height: 90vh; border: none; background: white; }
-    .media-close { position: fixed; top: 15px; right: 15px; color: white; font-size: 24px; cursor: pointer; z-index: 100001; background: rgba(255,255,255,0.2); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
-    .media-hint { color: #cbd5e1; font-size: 14px; text-align: center; background: rgba(50,50,50,0.8); padding: 8px 15px; border-radius: 20px; margin-bottom: 10px; width: 80%; }
+    .media-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; z-index: 99999; display: flex; flex-direction: column; }
+    
+    /* Header */
+    .viewer-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #1e293b; border-bottom: 1px solid #334155; color: white; }
+    .viewer-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
+    .viewer-close { background: rgba(255,255,255,0.1); width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; }
+
+    /* Content Area */
+    .viewer-body { flex: 1; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 10px; background: #000; position: relative; }
+    .media-content { max-width: 100%; height: auto; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+    #pdf-canvas { direction: ltr; background: white; margin-bottom: 60px; max-width: 100%; }
+
+    /* Controls (Footer) */
+    .viewer-controls { position: fixed; bottom: 0; left: 0; width: 100%; background: #1e293b; padding: 10px; display: flex; justify-content: space-around; align-items: center; border-top: 1px solid #334155; z-index: 100000; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+    .ctrl-btn { background: transparent; color: white; border: none; font-size: 18px; padding: 10px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .ctrl-btn span { font-size: 10px; opacity: 0.7; }
+    .ctrl-btn:active { background: rgba(255,255,255,0.1); }
+    .ctrl-btn.primary { color: #3b82f6; }
+    
+    /* PDF Nav */
+    .pdf-nav { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); padding: 8px 15px; border-radius: 30px; display: none; gap: 15px; align-items: center; color: white; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 100000; }
+    .nav-btn { background: none; border: none; color: white; font-size: 16px; cursor: pointer; }
+    .loading-spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; position: absolute; top: 50%; left: 50%; margin-left: -20px; margin-top: -20px; }
 `;
 document.head.appendChild(viewerStyle);
 
@@ -84,44 +110,176 @@ function fallbackCopyText(text) {
 }
 
 // ==========================================
-// --- ULTIMATE VIEW & SAVE HANDLER ---
+// --- ADVANCED PDF ENGINE & DOWNLOADER ---
 // ==========================================
 
-window.handleMediaClick = (base64Data, fileName, type) => {
-    // Check Data
-    if (!base64Data || !base64Data.includes(',')) return window.showPremiumAlert("Error", "Invalid file data.", true);
+// Helper: Base64 to Blob
+const base64ToBlob = (base64Data) => {
+    try {
+        if (!base64Data || !base64Data.includes(',')) return null;
+        const parts = base64Data.split(',');
+        const mime = parts[0].match(/:(.*?);/)[1];
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
+        return new Blob([u8arr], { type: mime });
+    } catch(e) { console.error("Blob Error", e); return null; }
+};
 
+// --- MAIN VIEWER FUNCTION ---
+window.handleMediaClick = async (base64Data, fileName, type) => {
+    // 1. UI Structure
     const overlay = document.createElement('div');
     overlay.className = 'media-overlay';
     
-    let contentHTML = '';
     let isImage = type === 'image' || (fileName && fileName.match(/\.(jpeg|jpg|png|gif)$/i));
-
-    if (isImage) {
-        // IMAGE: Show direct IMG tag. 
-        // User MUST long press this to save.
-        contentHTML = `
-            <div class="media-hint">👇 ছবি সেভ করতে ছবির ওপর ২ সেকেন্ড চেপে ধরে রাখুন</div>
-            <img src="${base64Data}" class="media-content" style="pointer-events: auto;">
-        `;
-    } else {
-        // PDF/FILE: Embed it.
-        // Android/iOS WebView will render this inside the frame.
-        contentHTML = `
-             <div class="media-hint">ফাইলটি নিচে ওপেন হয়েছে। পড়তে জুম করুন।</div>
-             <iframe src="${base64Data}" class="media-pdf-frame"></iframe>
-        `;
-    }
-
+    
+    // HTML Template
     overlay.innerHTML = `
-        <div class="media-close" onclick="this.parentElement.remove()">✕ Close</div>
-        <div class="media-container">
-            ${contentHTML}
+        <div class="viewer-header">
+            <div class="viewer-title">${fileName || 'Document Viewer'}</div>
+            <div class="viewer-close" id="close-viewer">✕</div>
+        </div>
+        
+        <div class="viewer-body" id="viewer-body">
+            <div class="loading-spinner" id="spinner"></div>
+            <!-- Content will be injected here -->
+        </div>
+
+        <!-- PDF Navigation (Only visible for PDF) -->
+        <div class="pdf-nav" id="pdf-nav">
+            <button class="nav-btn" id="prev-page"><i class="fas fa-chevron-left"></i></button>
+            <span id="page-num">1 / 1</span>
+            <button class="nav-btn" id="next-page"><i class="fas fa-chevron-right"></i></button>
+        </div>
+
+        <div class="viewer-controls">
+            <button class="ctrl-btn" id="zoom-out"><i class="fas fa-search-minus"></i><span>Zoom -</span></button>
+            <button class="ctrl-btn" id="zoom-in"><i class="fas fa-search-plus"></i><span>Zoom +</span></button>
+            <button class="ctrl-btn primary" id="share-save"><i class="fas fa-download"></i><span>Save</span></button>
         </div>
     `;
     
     document.body.appendChild(overlay);
+
+    // 2. Logic: Close
+    document.getElementById('close-viewer').onclick = () => { overlay.remove(); };
+
+    // 3. Logic: Render Content
+    const body = document.getElementById('viewer-body');
+    const spinner = document.getElementById('spinner');
+    
+    // --- IMAGE RENDER ---
+    if (isImage) {
+        spinner.style.display = 'none';
+        const img = document.createElement('img');
+        img.src = base64Data;
+        img.className = 'media-content';
+        body.appendChild(img);
+        
+        // Image Zoom Logic
+        let scale = 1;
+        document.getElementById('zoom-in').onclick = () => { scale += 0.2; img.style.transform = `scale(${scale})`; };
+        document.getElementById('zoom-out').onclick = () => { if(scale > 0.5) scale -= 0.2; img.style.transform = `scale(${scale})`; };
+    } 
+    // --- PDF RENDER (THE ADVANCED ENGINE) ---
+    else {
+        // PDF State
+        let pdfDoc = null;
+        let pageNum = 1;
+        let scale = 1.0;
+        let canvas = document.createElement('canvas');
+        canvas.id = 'pdf-canvas';
+        body.appendChild(canvas);
+        const ctx = canvas.getContext('2d');
+        const pdfNav = document.getElementById('pdf-nav');
+
+        try {
+            // Decode Base64
+            const pdfData = atob(base64Data.split(',')[1]);
+            
+            // Load via PDF.js
+            if(typeof pdfjsLib === 'undefined') {
+                throw new Error("PDF Engine not loaded yet. Please wait.");
+            }
+
+            const loadingTask = pdfjsLib.getDocument({data: pdfData});
+            pdfDoc = await loadingTask.promise;
+            
+            spinner.style.display = 'none';
+            pdfNav.style.display = 'flex';
+            
+            // Render Page Function
+            const renderPage = async (num) => {
+                const page = await pdfDoc.getPage(num);
+                const viewport = page.getViewport({scale: scale});
+                
+                // Adjust canvas size
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+
+                const renderContext = {
+                    canvasContext: ctx,
+                    viewport: viewport
+                };
+                await page.render(renderContext).promise;
+                document.getElementById('page-num').innerText = `${num} / ${pdfDoc.numPages}`;
+            };
+
+            // Initial Render
+            renderPage(pageNum);
+
+            // Button Events
+            document.getElementById('prev-page').onclick = () => { if(pageNum <= 1) return; pageNum--; renderPage(pageNum); };
+            document.getElementById('next-page').onclick = () => { if(pageNum >= pdfDoc.numPages) return; pageNum++; renderPage(pageNum); };
+            
+            document.getElementById('zoom-in').onclick = () => { scale += 0.2; renderPage(pageNum); };
+            document.getElementById('zoom-out').onclick = () => { if(scale > 0.5) scale -= 0.2; renderPage(pageNum); };
+
+        } catch (error) {
+            spinner.style.display = 'none';
+            body.innerHTML = `<p style="color:#ef4444; text-align:center;">Failed to render PDF.<br>Error: ${error.message}</p>`;
+        }
+    }
+
+    // 4. Logic: DOWNLOAD / SHARE (The Ultimate Fix)
+    document.getElementById('share-save').onclick = async () => {
+        const blob = base64ToBlob(base64Data);
+        if(!blob) return window.showPremiumAlert("Error", "File corrupted", true);
+
+        const fileObj = new File([blob], fileName || `document_${Date.now()}.pdf`, { type: blob.type });
+
+        // A. Try Mobile Native Share (Best for Telegram)
+        if (navigator.share && navigator.canShare({ files: [fileObj] })) {
+            try {
+                await navigator.share({
+                    files: [fileObj],
+                    title: fileName || "File",
+                    text: "Downloaded from Silent Portal"
+                });
+            } catch (err) {
+                // User cancelled, do nothing
+            }
+        } 
+        // B. Fallback: Direct Anchor Download (For Desktop/Android Chrome)
+        else {
+            try {
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName || "download";
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 1000);
+                window.showPremiumAlert("Success", "File saved to device.");
+            } catch (e) {
+                window.showPremiumAlert("Error", "Save blocked by browser.", true);
+            }
+        }
+    };
 };
+
 
 // --- IMAGE COMPRESSION ---
 const processFile = (file) => {
@@ -555,7 +713,7 @@ window.openChat = (k, id) => {
                         <span style="font-size:12px; font-weight:600;">${m.fileName || 'Document'}</span>
                     </div>
                     <button class="chat-file-download" style="background:#2563eb; color:white; width:100%; justify-content:center;" onclick="window.handleMediaClick('${m.file}', '${m.fileName || 'file'}', 'file')">
-                        <i class="fas fa-eye"></i> View File
+                        <i class="fas fa-folder-open"></i> Open & Save
                     </button>`;
             } else {
                 const linkify = (text) => { const urlRegex = /(https?:\/\/[^\s]+)/g; return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:inherit; text-decoration:underline; font-weight:bold; word-break: break-all;">${url}</a>`; }); };
