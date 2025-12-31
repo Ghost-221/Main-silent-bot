@@ -25,6 +25,18 @@ let activeChat = null, chatTimerInterval = null, maintInterval = null, orderStat
 let activeCategory = "All";
 let globalNoticeData = null; 
 
+// --- INJECT VIEWER CSS AUTOMATICALLY ---
+const viewerStyle = document.createElement('style');
+viewerStyle.innerHTML = `
+    .media-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
+    .media-content { max-width: 95%; max-height: 80%; object-fit: contain; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+    .media-close { position: absolute; top: 20px; right: 20px; color: white; font-size: 30px; cursor: pointer; z-index: 100001; background: rgba(255,255,255,0.1); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
+    .media-actions { position: absolute; bottom: 30px; display: flex; gap: 15px; z-index: 100001; }
+    .media-btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 20px; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
+    .media-hint { color: #94a3b8; font-size: 12px; margin-top: 10px; text-align: center; }
+`;
+document.head.appendChild(viewerStyle);
+
 // --- THEME ---
 window.toggleTheme = () => {
     const isDark = document.body.getAttribute('data-theme') === 'dark';
@@ -72,59 +84,93 @@ function fallbackCopyText(text) {
 }
 
 // ==========================================
-// --- ULTIMATE FILE HANDLER (PDF/IMG/ZIP) ---
+// --- ULTIMATE MOBILE FILE HANDLER ---
 // ==========================================
 
-// Helper: Convert Base64 to Blob
+// Helper: Base64 to Blob
 const base64ToBlob = (base64Data) => {
-    const parts = base64Data.split(',');
-    const mime = parts[0].match(/:(.*?);/)[1];
-    const bstr = atob(parts[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) { u8arr[n] = bstr.charCodeAt(n); }
-    return new Blob([u8arr], { type: mime });
+    try {
+        const parts = base64Data.split(',');
+        const mime = parts[0].match(/:(.*?);/)[1];
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
+        return new Blob([u8arr], { type: mime });
+    } catch(e) { console.error(e); return null; }
 };
 
-// 1. Download Function (Forces Save)
-window.downloadMedia = (base64Data, fileName) => {
-    try {
-        if (!base64Data || !base64Data.includes(',')) return window.showPremiumAlert("Error", "Invalid file.", true);
-        
-        const blob = base64ToBlob(base64Data);
-        const url = window.URL.createObjectURL(blob);
-        
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = fileName || 'download';
-        document.body.appendChild(a);
-        a.click();
-        
-        setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 2000);
-    } catch (e) {
-        window.showPremiumAlert("Download Error", "Try using the 'View' button.", true);
+// 1. Universal Viewer (Handles Images & PDFs)
+window.handleMediaClick = async (base64Data, fileName, type) => {
+    // 1. Create Overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'media-overlay';
+    
+    // 2. Prepare Content based on Type
+    let contentHTML = '';
+    let isImage = type === 'image' || (fileName && fileName.match(/\.(jpeg|jpg|png|gif)$/i));
+    
+    if (isImage) {
+        contentHTML = `<img src="${base64Data}" class="media-content">
+                       <div class="media-hint">Tip: ছবি সেভ করতে ছবির ওপর ২ সেকেন্ড চেপে ধরে রাখুন</div>`;
+    } else {
+        // For PDF/Files, show Icon
+        contentHTML = `<i class="fas fa-file-pdf" style="font-size:80px; color:#ef4444; margin-bottom:20px;"></i>
+                       <h3 style="color:white; margin:0;">${fileName || 'Document'}</h3>
+                       <div class="media-hint">ফাইলটি সেভ করতে নিচের Share বাটনে ক্লিক করুন</div>`;
     }
-};
 
-// 2. View Function (Opens PDF/Image in new tab for saving)
-window.viewMedia = (base64Data) => {
-    try {
-        if (!base64Data || !base64Data.includes(',')) return;
+    // 3. Actions (Close & Share)
+    overlay.innerHTML = `
+        <div class="media-close" onclick="this.parentElement.remove()">✕</div>
+        ${contentHTML}
+        <div class="media-actions">
+            <button class="media-btn" id="share-btn"><i class="fas fa-share-alt"></i> Share / Save</button>
+            ${!isImage ? `<button class="media-btn" id="open-btn" style="background:#10b981"><i class="fas fa-external-link-alt"></i> Open Link</button>` : ''}
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
+
+    // 4. Attach Share Logic (The Mobile Magic)
+    const blob = base64ToBlob(base64Data);
+    if(blob) {
+        const fileObj = new File([blob], fileName || 'download', { type: blob.type });
+
+        document.getElementById('share-btn').onclick = async () => {
+            if (navigator.share && navigator.canShare({ files: [fileObj] })) {
+                try {
+                    await navigator.share({
+                        files: [fileObj],
+                        title: fileName,
+                        text: 'File from Silent Portal'
+                    });
+                } catch (error) {
+                    console.log('Share failed', error);
+                }
+            } else {
+                // Fallback for Desktop or unsupported
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = fileName;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+                window.showPremiumAlert("Downloaded", "Check your downloads folder.");
+            }
+        };
         
-        const blob = base64ToBlob(base64Data);
-        const url = window.URL.createObjectURL(blob);
-        
-        // Open in new window
-        const win = window.open(url, '_blank');
-        
-        if (!win) {
-            window.showPremiumAlert("Popup Blocked", "Please allow popups or use Download.", true);
+        // Open Button Logic
+        if(document.getElementById('open-btn')) {
+            document.getElementById('open-btn').onclick = () => {
+                 const url = window.URL.createObjectURL(blob);
+                 window.open(url, '_blank');
+            };
         }
-    } catch (e) {
-        window.showPremiumAlert("Error", "Could not open file.", true);
     }
 };
+
 
 // --- IMAGE COMPRESSION ---
 const processFile = (file) => {
@@ -338,17 +384,11 @@ function loadHistory() {
         if(allOrders.length === 0) list.innerHTML = '<p style="text-align:center; font-size:12px; color:var(--text-muted)">No orders yet.</p>';
         
         allOrders.forEach(v => {
-            // 12H Check
             let isExpired = false; 
             if(v.status === 'completed' && v.completed_at) { 
                 if((Date.now() - v.completed_at) > 43200000) isExpired = true; 
             }
-            
-            // Only show chat if NOT expired
-            let chatBtn = (!isExpired && v.status !== 'cancelled') 
-                ? `<button class="chat-btn-small" onclick="window.openChat('${v.key}', '${v.orderId_visible}')"><i class="fas fa-comments"></i></button>` 
-                : '';
-                
+            let chatBtn = (!isExpired && v.status !== 'cancelled') ? `<button class="chat-btn-small" onclick="window.openChat('${v.key}', '${v.orderId_visible}')"><i class="fas fa-comments"></i></button>` : '';
             let clr = v.status==='completed'?'#10b981':(v.status==='cancelled'?'#ef4444':'#f59e0b'); 
             let noteHTML = (v.status === 'cancelled' && v.admin_note) ? `<div style="font-size:11px; color:#ef4444; background:#fef2f2; padding:5px; border-radius:4px; margin-top:5px;">Reason: ${v.admin_note}</div>` : ""; 
             list.innerHTML += `<div class="order-card"><div class="order-top"><b style="font-size:14px; color:var(--text);">${v.service}</b>${chatBtn}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--text-muted);"><span>#${v.orderId_visible}</span><span class="status-badge" style="color:${clr}; background:${clr}15;">${v.status.toUpperCase()}</span></div>${noteHTML}<div style="font-size:10px; color:var(--text-muted); text-align:right;">${new Date(v.timestamp).toLocaleDateString()}</div></div>`; 
@@ -436,7 +476,7 @@ window.renderServiceGrid = () => {
 
 window.filterServices = (cat, el) => { activeCategory = cat; document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active')); el.classList.add('active'); window.renderServiceGrid(); };
 
-// --- OPEN ORDER (IMAGE LABEL FIX) ---
+// --- OPEN ORDER ---
 window.openOrder = (key) => {
     const svc = globalServices[key]; if(!svc) return;
     curSvcKey = key; curBasePrice = parseInt(svc.price); curFinalPrice = curBasePrice; 
@@ -450,7 +490,6 @@ window.openOrder = (key) => {
             let html = ""; const safeLabel = f.label.replace(/[^a-zA-Z0-9]/g, '_');
             if(f.type === 'textarea') html = `<textarea class="auth-inp dynamic-field" data-label="${f.label}" rows="4" placeholder="${f.label}"></textarea>`;
             else if (f.type === 'link') html = `<input class="auth-inp dynamic-field" type="url" data-label="${f.label}" placeholder="https://...">`;
-            // Fixed Image Input with Label
             else if (f.type === 'file_url') {
                 html = `<div class="form-group"><label class="input-label" style="margin-bottom: 5px; display: block;">${f.label}</label><div class="file-upload-wrapper"><input type="file" class="file-upload-input dynamic-file-field" data-label="${f.label}" accept="*/*" onchange="window.handleFileSelect(this)"><div class="file-upload-label"><i class="fas fa-cloud-upload-alt"></i> Choose File/Image</div><span class="file-preview-name"></span></div></div>`;
             }
@@ -505,120 +544,72 @@ window.handleChatFile = async (input) => {
     } catch(e) { window.showPremiumAlert("Error", "Failed to send file.", true); }
 };
 
-// --- CHAT LOGIC (12H AUTO DELETE + TOP LEVEL PDF/IMG FIX) ---
+// --- CHAT LOGIC (12H AUTO DELETE + TOP LEVEL MEDIA HANDLER) ---
 window.openChat = (k, id) => { 
     const chatModal = document.getElementById('chat-modal'); if(!chatModal) return;
-    
-    // Clear & Load
     document.getElementById('chat-box').innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
-    
     activeChat = k; 
-    
     if(document.getElementById('chat-head')) document.getElementById('chat-head').innerText = "Chat #" + id; 
     const inp = document.getElementById('chat-input-wrap'), cls = document.getElementById('chat-closed-wrap'); 
     if (orderStatusListener) off(orderStatusListener); 
-    
     const EXPIRY_TIME_MS = 12 * 60 * 60 * 1000;
 
     orderStatusListener = onValue(ref(db, 'orders/' + k), (s) => { 
         const data = s.val(); 
-        
         if(!data || data.status === 'cancelled') { window.closeChatModal(); return; } 
-        
         if (chatTimerInterval) clearInterval(chatTimerInterval); 
-        
-        // Expiry Check
         if (data.status === 'completed' && data.completed_at) {
             const timePassed = Date.now() - data.completed_at;
             if (timePassed > EXPIRY_TIME_MS) {
-                remove(ref(db, 'chats/'+k));
-                window.closeChatModal();
-                window.showPremiumAlert("Chat Expired", "12 hours passed. Chat is now closed.", true);
-                return;
+                remove(ref(db, 'chats/'+k)); window.closeChatModal(); window.showPremiumAlert("Chat Expired", "12 hours passed. Chat is now closed.", true); return;
             }
         }
-
-        if (data.status === 'pending') { 
-            inp.style.display = 'flex'; cls.style.display = 'none'; 
-        } else if (data.status === 'processing') { 
-            inp.style.display = 'none'; cls.style.display = 'block'; cls.className = 'chat-closed-ui processing'; 
-            cls.innerHTML = '<i class="fas fa-lock"></i> অর্ডার প্রসেসিং এ আছে। চ্যাট বন্ধ।'; 
-        } else if (data.status === 'completed') { 
+        if (data.status === 'pending') { inp.style.display = 'flex'; cls.style.display = 'none'; } 
+        else if (data.status === 'processing') { inp.style.display = 'none'; cls.style.display = 'block'; cls.className = 'chat-closed-ui processing'; cls.innerHTML = '<i class="fas fa-lock"></i> অর্ডার প্রসেসিং এ আছে। চ্যাট বন্ধ।'; } 
+        else if (data.status === 'completed') { 
             inp.style.display = 'none'; cls.style.display = 'block'; cls.className = 'chat-closed-ui'; 
-            
             const updateTimer = () => { 
                 const diff = EXPIRY_TIME_MS - (Date.now() - (data.completed_at || 0)); 
-                if (diff <= 0) { 
-                    clearInterval(chatTimerInterval); 
-                    remove(ref(db, 'chats/'+k)); 
-                    window.closeChatModal(); 
-                    window.showPremiumAlert("Chat Expired", "Time limit reached.", true);
-                } else { 
-                    const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)); 
-                    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                    cls.innerHTML = `<i class="fas fa-history"></i> Chat expiring in: ${h}h ${m}m`; 
-                } 
+                if (diff <= 0) { clearInterval(chatTimerInterval); remove(ref(db, 'chats/'+k)); window.closeChatModal(); window.showPremiumAlert("Chat Expired", "Time limit reached.", true); } 
+                else { const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)); const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)); cls.innerHTML = `<i class="fas fa-history"></i> Chat expiring in: ${h}h ${m}m`; } 
             }; 
-            updateTimer(); 
-            chatTimerInterval = setInterval(updateTimer, 60000); 
+            updateTimer(); chatTimerInterval = setInterval(updateTimer, 60000); 
         } 
     }); 
     
     chatModal.style.display='flex'; 
-
     let isChatInit = true;
     onValue(ref(db, 'chats/'+k), s => { 
-        const b = document.getElementById('chat-box'); 
-        if(!b) return;
-        b.innerHTML=""; 
+        const b = document.getElementById('chat-box'); if(!b) return; b.innerHTML=""; 
         const chatData = []; let newMsgFound = false;
-        
-        if(s.exists()) {
-            s.forEach(c => { const m = c.val(); chatData.push(m); if (!isChatInit && m.s !== user.uid) newMsgFound = true; });
-        }
+        if(s.exists()) { s.forEach(c => { const m = c.val(); chatData.push(m); if (!isChatInit && m.s !== user.uid) newMsgFound = true; }); }
         if(newMsgFound) sndMsg.play().catch(()=>{}); isChatInit = false; 
         
         chatData.forEach(m => { 
             const isMe = (m.s === user.uid); let content = "";
             
-            // --- ULTIMATE FILE RENDERING LOGIC ---
+            // --- UPDATED MEDIA RENDERING WITH VIEWER CALL ---
             if(m.type === 'image') {
                 content = `
-                    <img src="${m.file}" class="chat-img-preview"><br>
-                    <div style="display:flex; gap:5px; margin-top:5px;">
-                        <button class="chat-file-download" onclick="window.downloadMedia('${m.file}', '${m.fileName || 'image.jpg'}')">
-                            <i class="fas fa-download"></i> Save
-                        </button>
-                        <button class="chat-file-download" style="background:rgba(0,0,0,0.2);" onclick="window.viewMedia('${m.file}')">
-                            <i class="fas fa-eye"></i> View
-                        </button>
-                    </div>`;
+                    <img src="${m.file}" class="chat-img-preview" onclick="window.handleMediaClick('${m.file}', '${m.fileName || 'image.jpg'}', 'image')"><br>
+                    <button class="chat-file-download" style="background:rgba(255,255,255,0.2); width:100%; justify-content:center;" onclick="window.handleMediaClick('${m.file}', '${m.fileName || 'image.jpg'}', 'image')">
+                        <i class="fas fa-expand"></i> View & Save
+                    </button>`;
             } else if (m.type === 'file') {
-                // PDF CHECK
                 let isPdf = m.file.includes('application/pdf');
                 let iconClass = isPdf ? "fa-file-pdf" : "fa-file";
                 let iconColor = isPdf ? "#ef4444" : "var(--text)";
-                
                 content = `
                     <div style="display:flex;align-items:center;gap:10px; margin-bottom:6px;">
                         <i class="fas ${iconClass}" style="font-size:24px; color:${iconColor};"></i> 
                         <span style="font-size:12px; font-weight:600;">${m.fileName || 'Document'}</span>
                     </div>
-                    <div style="display:flex; gap:5px;">
-                        <button class="chat-file-download" onclick="window.downloadMedia('${m.file}', '${m.fileName || 'file'}')">
-                            <i class="fas fa-download"></i> Save
-                        </button>
-                         <button class="chat-file-download" style="background:rgba(0,0,0,0.2);" onclick="window.viewMedia('${m.file}')">
-                            <i class="fas fa-external-link-alt"></i> Open
-                        </button>
-                    </div>`;
+                    <button class="chat-file-download" style="background:#2563eb; color:white; width:100%; justify-content:center;" onclick="window.handleMediaClick('${m.file}', '${m.fileName || 'file'}', 'file')">
+                        <i class="fas fa-download"></i> Save / Share
+                    </button>`;
             } else {
                 const linkify = (text) => { const urlRegex = /(https?:\/\/[^\s]+)/g; return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:inherit; text-decoration:underline; font-weight:bold; word-break: break-all;">${url}</a>`; }); };
-                const msgContent = linkify(m.t || "");
-                const safeText = encodeURIComponent(m.t || "");
-                const copyIcon = `<i class="fas fa-copy copy-btn-icon" onclick="event.stopPropagation(); window.copyText(decodeURIComponent('${safeText}'))"></i>`;
-                const textColor = isMe ? 'white' : 'var(--text)';
-                content = `<span style="color:${textColor}; display:block;">${msgContent}</span>${copyIcon}`;
+                content = `<span style="color:${isMe ? 'white' : 'var(--text)'}; display:block;">${linkify(m.t || "")}</span>`;
             }
             b.innerHTML += `<div class="msg-row ${isMe?'me':'adm'}"><div class="msg ${isMe?'msg-me':'msg-adm'}">${content}</div></div>`; 
         }); 
