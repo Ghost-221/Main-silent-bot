@@ -42,12 +42,16 @@ viewerStyle.innerHTML = `
     .viewer-close { background: rgba(255,255,255,0.1); width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 18px; }
     .viewer-body { flex: 1; overflow: auto; display: flex; justify-content: center; align-items: flex-start; padding: 10px; background: #000; position: relative; }
     .media-content { max-width: 100%; height: auto; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
-    #pdf-canvas { direction: ltr; background: white; margin-bottom: 80px; max-width: 100%; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
-    .viewer-controls { position: fixed; bottom: 0; left: 0; width: 100%; background: #1e293b; padding: 15px 10px; display: flex; justify-content: center; gap: 15px; border-top: 1px solid #334155; z-index: 100000; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
-    .ctrl-btn { background: #334155; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 60px; }
+    #pdf-canvas { direction: ltr; background: white; margin-bottom: 100px; max-width: 100%; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
+    
+    /* NEW CONTROLS LAYOUT */
+    .viewer-controls { position: fixed; bottom: 0; left: 0; width: 100%; background: #1e293b; padding: 15px 10px; display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 10px; border-top: 1px solid #334155; z-index: 100000; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
+    .ctrl-btn { background: #334155; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 16px; }
     .ctrl-btn span { font-size: 10px; opacity: 0.8; }
-    .ctrl-btn.primary { background: #2563eb; color: white; flex: 1; max-width: 200px; font-weight: bold; }
-    .pdf-nav { position: fixed; bottom: 90px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); padding: 8px 15px; border-radius: 30px; display: none; gap: 15px; align-items: center; color: white; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 100000; }
+    .ctrl-btn.primary { background: #2563eb; color: white; font-weight: bold; }
+    .ctrl-btn.secondary { background: #0f172a; border: 1px solid #334155; }
+    
+    .pdf-nav { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); padding: 8px 15px; border-radius: 30px; display: none; gap: 15px; align-items: center; color: white; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 100000; }
     .nav-btn { background: none; border: none; color: white; font-size: 16px; cursor: pointer; }
     .loading-spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; position: absolute; top: 50%; left: 50%; margin-left: -20px; margin-top: -20px; }
 `;
@@ -100,7 +104,7 @@ function fallbackCopyText(text) {
 }
 
 // ==========================================
-// --- FIXED DOWNLOAD / SHARE LOGIC ---
+// --- ULTIMATE TELEGRAM FILE HANDLER ---
 // ==========================================
 
 const base64ToBlob = (base64Data) => {
@@ -130,17 +134,25 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
         <div class="viewer-body" id="viewer-body">
             <div class="loading-spinner" id="spinner"></div>
         </div>
+        
+        <!-- PDF Nav -->
         <div class="pdf-nav" id="pdf-nav">
             <button class="nav-btn" id="prev-page"><i class="fas fa-chevron-left"></i></button>
             <span id="page-num">1 / 1</span>
             <button class="nav-btn" id="next-page"><i class="fas fa-chevron-right"></i></button>
         </div>
+
+        <!-- NEW CONTROLS FOR MOBILE -->
         <div class="viewer-controls">
-            <button class="ctrl-btn" id="zoom-out"><i class="fas fa-minus"></i></button>
-            <button class="ctrl-btn primary" id="share-save">
-                <i class="fas fa-share-square"></i><span>SAVE / SHARE</span>
+            <button class="ctrl-btn secondary" id="zoom-toggle">
+                <i class="fas fa-search-plus"></i>
             </button>
-            <button class="ctrl-btn" id="zoom-in"><i class="fas fa-plus"></i></button>
+            <button class="ctrl-btn primary" id="share-btn">
+                <i class="fas fa-share-alt"></i><span>SHARE / SAVE</span>
+            </button>
+            <button class="ctrl-btn secondary" id="open-ext">
+                <i class="fas fa-external-link-alt"></i>
+            </button>
         </div>
     `;
     
@@ -150,6 +162,11 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
     const body = document.getElementById('viewer-body');
     const spinner = document.getElementById('spinner');
 
+    // --- RENDER LOGIC ---
+    let scale = 1;
+    let renderPageFn = null;
+    let pageNum = 1;
+
     if (isImage) {
         spinner.style.display = 'none';
         const img = document.createElement('img');
@@ -157,12 +174,16 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
         img.className = 'media-content';
         body.appendChild(img);
         
-        let scale = 1;
-        document.getElementById('zoom-in').onclick = () => { scale += 0.2; img.style.transform = `scale(${scale})`; };
-        document.getElementById('zoom-out').onclick = () => { if(scale > 0.5) scale -= 0.2; img.style.transform = `scale(${scale})`; };
+        // Image Zoom
+        document.getElementById('zoom-toggle').onclick = () => { 
+            scale = (scale === 1) ? 2 : 1; 
+            img.style.transform = `scale(${scale})`; 
+            img.style.transition = "transform 0.3s";
+        };
     } else {
-        // PDF RENDERER
-        let pdfDoc = null, pageNum = 1, scale = 1.0, canvas = document.createElement('canvas');
+        // PDF RENDERER (PDF.JS)
+        let pdfDoc = null;
+        let canvas = document.createElement('canvas');
         canvas.id = 'pdf-canvas'; body.appendChild(canvas);
         const ctx = canvas.getContext('2d');
         const pdfNav = document.getElementById('pdf-nav');
@@ -177,7 +198,7 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
             spinner.style.display = 'none';
             pdfNav.style.display = 'flex';
             
-            const renderPage = async (num) => {
+            renderPageFn = async (num) => {
                 const page = await pdfDoc.getPage(num);
                 const viewport = page.getViewport({scale: scale});
                 canvas.height = viewport.height;
@@ -185,68 +206,60 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
                 await page.render({ canvasContext: ctx, viewport: viewport }).promise;
                 document.getElementById('page-num').innerText = `${num} / ${pdfDoc.numPages}`;
             };
-            renderPage(pageNum);
+            renderPageFn(pageNum);
 
-            document.getElementById('prev-page').onclick = () => { if(pageNum > 1) { pageNum--; renderPage(pageNum); } };
-            document.getElementById('next-page').onclick = () => { if(pageNum < pdfDoc.numPages) { pageNum++; renderPage(pageNum); } };
-            document.getElementById('zoom-in').onclick = () => { scale += 0.2; renderPage(pageNum); };
-            document.getElementById('zoom-out').onclick = () => { if(scale > 0.6) scale -= 0.2; renderPage(pageNum); };
+            document.getElementById('prev-page').onclick = () => { if(pageNum > 1) { pageNum--; renderPageFn(pageNum); } };
+            document.getElementById('next-page').onclick = () => { if(pageNum < pdfDoc.numPages) { pageNum++; renderPageFn(pageNum); } };
+            
+            // PDF Zoom
+            document.getElementById('zoom-toggle').onclick = () => { 
+                scale = (scale === 1.0) ? 1.5 : 1.0; 
+                renderPageFn(pageNum); 
+            };
 
         } catch (error) {
             spinner.style.display = 'none';
-            body.innerHTML = `<p style="color:#ef4444;text-align:center;margin-top:50px;">PDF Render Error.<br>Try Saving directly.</p>`;
+            body.innerHTML = `<p style="color:#ef4444;text-align:center;margin-top:50px;">Rendering Failed.<br>Please use the Share button to view.</p>`;
         }
     }
 
-    // --- FORCE DOWNLOAD / SHARE LOGIC ---
-    document.getElementById('share-save').onclick = async () => {
+    // --- BUTTON 1: SHARE (THE FIX FOR TELEGRAM) ---
+    document.getElementById('share-btn').onclick = async () => {
         const blob = base64ToBlob(base64Data);
-        if(!blob) return window.showPremiumAlert("Error", "File corrupted", true);
+        if(!blob) return;
 
-        const safeFileName = fileName ? fileName.replace(/[^a-zA-Z0-9.]/g, '_') : `document_${Date.now()}.pdf`;
-        const fileObj = new File([blob], safeFileName, { type: blob.type });
+        const safeName = fileName ? fileName.replace(/[^a-zA-Z0-9.]/g, '_') : `file_${Date.now()}.${isImage ? 'jpg' : 'pdf'}`;
+        const fileObj = new File([blob], safeName, { type: blob.type });
 
-        // 1. TELEGRAM PREFERRED METHOD: SHARE SHEET
         if (navigator.share && navigator.canShare({ files: [fileObj] })) {
             try {
                 await navigator.share({
                     files: [fileObj],
-                    title: fileName || "Downloaded File",
+                    title: fileName,
                     text: "File from Silent Portal"
                 });
-                // Note: We don't show success alert here because user knows if they shared it or not.
             } catch (err) {
-                // If user cancels share, do nothing.
-                // If it fails for other reasons, fallback to option 2.
-                attemptDirectDownload(blob, safeFileName);
+                // Share cancelled
             }
         } else {
-            // 2. FALLBACK
-            attemptDirectDownload(blob, safeFileName);
+            window.showPremiumAlert("Share Error", "Device doesn't support sharing.", true);
+        }
+    };
+
+    // --- BUTTON 2: EXTERNAL OPEN (FALLBACK) ---
+    document.getElementById('open-ext').onclick = () => {
+        const blob = base64ToBlob(base64Data);
+        if(!blob) return;
+        
+        try {
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, '_blank');
+            window.showPremiumAlert("Opening...", "Check browser tabs.");
+        } catch(e) {
+            window.showPremiumAlert("Blocked", "Browser blocked the window.", true);
         }
     };
 };
-
-function attemptDirectDownload(blob, fileName) {
-    try {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        
-        window.showPremiumAlert("Action Triggered", "Check your browser's download menu.", false);
-        
-        setTimeout(() => {
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }, 2000);
-    } catch(e) {
-        window.showPremiumAlert("Failed", "Browser blocked the download.", true);
-    }
-}
 
 // --- IMAGE COMPRESSION ---
 const processFile = (file) => {
