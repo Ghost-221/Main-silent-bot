@@ -25,15 +25,16 @@ let activeChat = null, chatTimerInterval = null, maintInterval = null, orderStat
 let activeCategory = "All";
 let globalNoticeData = null; 
 
-// --- INJECT VIEWER CSS AUTOMATICALLY ---
+// --- INJECT VIEWER CSS ---
 const viewerStyle = document.createElement('style');
 viewerStyle.innerHTML = `
     .media-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
-    .media-content { max-width: 95%; max-height: 80%; object-fit: contain; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+    .media-content { max-width: 95%; max-height: 70%; object-fit: contain; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); user-select: auto !important; -webkit-user-select: auto !important; pointer-events: auto !important; }
     .media-close { position: absolute; top: 20px; right: 20px; color: white; font-size: 30px; cursor: pointer; z-index: 100001; background: rgba(255,255,255,0.1); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-    .media-actions { position: absolute; bottom: 30px; display: flex; gap: 15px; z-index: 100001; }
-    .media-btn { background: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 20px; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; }
-    .media-hint { color: #94a3b8; font-size: 12px; margin-top: 10px; text-align: center; }
+    .media-actions { position: absolute; bottom: 40px; display: flex; gap: 15px; z-index: 100001; flex-wrap: wrap; justify-content: center; width: 100%; }
+    .media-btn { background: #2563eb; color: white; border: none; padding: 12px 25px; border-radius: 30px; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); transition: 0.2s; }
+    .media-btn:active { transform: scale(0.95); }
+    .media-hint { color: #cbd5e1; font-size: 13px; margin-top: 15px; text-align: center; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px; }
 `;
 document.head.appendChild(viewerStyle);
 
@@ -84,12 +85,13 @@ function fallbackCopyText(text) {
 }
 
 // ==========================================
-// --- ULTIMATE MOBILE FILE HANDLER ---
+// --- ULTIMATE MOBILE FILE HANDLER v3 ---
 // ==========================================
 
 // Helper: Base64 to Blob
 const base64ToBlob = (base64Data) => {
     try {
+        if (!base64Data || !base64Data.includes(',')) return null;
         const parts = base64Data.split(',');
         const mime = parts[0].match(/:(.*?);/)[1];
         const bstr = atob(parts[1]);
@@ -97,46 +99,45 @@ const base64ToBlob = (base64Data) => {
         const u8arr = new Uint8Array(n);
         while (n--) { u8arr[n] = bstr.charCodeAt(n); }
         return new Blob([u8arr], { type: mime });
-    } catch(e) { console.error(e); return null; }
+    } catch(e) { console.error("Blob Error", e); return null; }
 };
 
-// 1. Universal Viewer (Handles Images & PDFs)
 window.handleMediaClick = async (base64Data, fileName, type) => {
     // 1. Create Overlay
     const overlay = document.createElement('div');
     overlay.className = 'media-overlay';
     
-    // 2. Prepare Content based on Type
     let contentHTML = '';
     let isImage = type === 'image' || (fileName && fileName.match(/\.(jpeg|jpg|png|gif)$/i));
     
+    // --- IMAGE LOGIC (Enable Long Press) ---
     if (isImage) {
         contentHTML = `<img src="${base64Data}" class="media-content">
-                       <div class="media-hint">Tip: ছবি সেভ করতে ছবির ওপর ২ সেকেন্ড চেপে ধরে রাখুন</div>`;
+                       <div class="media-hint">👉 ছবি সেভ করতে ছবির ওপর ২ সেকেন্ড চেপে ধরে রাখুন</div>`;
     } else {
-        // For PDF/Files, show Icon
+    // --- FILE/PDF LOGIC ---
         contentHTML = `<i class="fas fa-file-pdf" style="font-size:80px; color:#ef4444; margin-bottom:20px;"></i>
-                       <h3 style="color:white; margin:0;">${fileName || 'Document'}</h3>
+                       <h3 style="color:white; margin:0; padding:0 20px; text-align:center;">${fileName || 'Document'}</h3>
                        <div class="media-hint">ফাইলটি সেভ করতে নিচের Share বাটনে ক্লিক করুন</div>`;
     }
 
-    // 3. Actions (Close & Share)
     overlay.innerHTML = `
         <div class="media-close" onclick="this.parentElement.remove()">✕</div>
         ${contentHTML}
         <div class="media-actions">
-            <button class="media-btn" id="share-btn"><i class="fas fa-share-alt"></i> Share / Save</button>
-            ${!isImage ? `<button class="media-btn" id="open-btn" style="background:#10b981"><i class="fas fa-external-link-alt"></i> Open Link</button>` : ''}
+            <button class="media-btn" id="share-btn"><i class="fas fa-share-alt"></i> Share File</button>
+            <button class="media-btn" id="dl-btn" style="background:#0ea5e9"><i class="fas fa-download"></i> Direct Save</button>
         </div>
     `;
     
     document.body.appendChild(overlay);
 
-    // 4. Attach Share Logic (The Mobile Magic)
+    // Prepare File Object
     const blob = base64ToBlob(base64Data);
     if(blob) {
-        const fileObj = new File([blob], fileName || 'download', { type: blob.type });
+        const fileObj = new File([blob], fileName || `file_${Date.now()}.${isImage ? 'jpg':'pdf'}`, { type: blob.type });
 
+        // A. SHARE STRATEGY (Best for Telegram/Mobile)
         document.getElementById('share-btn').onclick = async () => {
             if (navigator.share && navigator.canShare({ files: [fileObj] })) {
                 try {
@@ -146,28 +147,35 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
                         text: 'File from Silent Portal'
                     });
                 } catch (error) {
-                    console.log('Share failed', error);
+                    // User cancelled share
                 }
             } else {
-                // Fallback for Desktop or unsupported
+                window.showPremiumAlert("Share Failed", "Device doesn't support direct file sharing.", true);
+            }
+        };
+
+        // B. DIRECT DOWNLOAD STRATEGY (Fallback)
+        document.getElementById('dl-btn').onclick = () => {
+            try {
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = fileName;
+                a.download = fileName || 'download';
                 document.body.appendChild(a);
                 a.click();
-                setTimeout(() => window.URL.revokeObjectURL(url), 1000);
-                window.showPremiumAlert("Downloaded", "Check your downloads folder.");
+                
+                window.showPremiumAlert("Downloading...", "Check notifications/downloads.");
+                
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                }, 1000);
+            } catch (e) {
+                window.showPremiumAlert("Blocked", "Browser blocked the download.", true);
             }
         };
-        
-        // Open Button Logic
-        if(document.getElementById('open-btn')) {
-            document.getElementById('open-btn').onclick = () => {
-                 const url = window.URL.createObjectURL(blob);
-                 window.open(url, '_blank');
-            };
-        }
+    } else {
+        window.showPremiumAlert("Error", "File data corrupted.", true);
     }
 };
 
@@ -196,7 +204,6 @@ const processFile = (file) => {
             };
             reader.onerror = (err) => reject(err);
         } else {
-            // PDF or Other Files - Read as Base64 directly
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result);
             reader.onerror = (error) => reject(error);
@@ -544,7 +551,7 @@ window.handleChatFile = async (input) => {
     } catch(e) { window.showPremiumAlert("Error", "Failed to send file.", true); }
 };
 
-// --- CHAT LOGIC (12H AUTO DELETE + TOP LEVEL MEDIA HANDLER) ---
+// --- CHAT LOGIC ---
 window.openChat = (k, id) => { 
     const chatModal = document.getElementById('chat-modal'); if(!chatModal) return;
     document.getElementById('chat-box').innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
@@ -588,12 +595,12 @@ window.openChat = (k, id) => {
         chatData.forEach(m => { 
             const isMe = (m.s === user.uid); let content = "";
             
-            // --- UPDATED MEDIA RENDERING WITH VIEWER CALL ---
+            // --- UPDATED MEDIA RENDERING ---
             if(m.type === 'image') {
                 content = `
                     <img src="${m.file}" class="chat-img-preview" onclick="window.handleMediaClick('${m.file}', '${m.fileName || 'image.jpg'}', 'image')"><br>
                     <button class="chat-file-download" style="background:rgba(255,255,255,0.2); width:100%; justify-content:center;" onclick="window.handleMediaClick('${m.file}', '${m.fileName || 'image.jpg'}', 'image')">
-                        <i class="fas fa-expand"></i> View & Save
+                        <i class="fas fa-expand"></i> View
                     </button>`;
             } else if (m.type === 'file') {
                 let isPdf = m.file.includes('application/pdf');
@@ -621,8 +628,6 @@ window.sendMsg = () => { const t = document.getElementById('chat-in').value; if(
 window.closeChatModal = () => { document.getElementById('chat-modal').style.display='none'; if (chatTimerInterval) clearInterval(chatTimerInterval); if(orderStatusListener) off(orderStatusListener); };
 
 // ================= SECURITY MODULE =================
-document.addEventListener('contextmenu', event => event.preventDefault());
+// Removed context menu blocker to allow mobile saving
 document.onkeydown = function(e) { if (e.keyCode === 123 || (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74)) || (e.ctrlKey && e.keyCode === 85)) return false; };
-window.addEventListener('blur', () => { document.body.classList.add('blur-mode'); document.title = "⚠️ Security Alert"; });
-window.addEventListener('focus', () => { document.body.classList.remove('blur-mode'); document.title = "Siͥleͣnͫt Cyber Raid Portal"; });
 document.querySelectorAll('img').forEach(img => { img.addEventListener('dragstart', e => e.preventDefault()); });
