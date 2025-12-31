@@ -25,16 +25,15 @@ let activeChat = null, chatTimerInterval = null, maintInterval = null, orderStat
 let activeCategory = "All";
 let globalNoticeData = null; 
 
-// --- INJECT VIEWER CSS ---
+// --- VIEWER CSS (UPDATED FOR SCROLLING) ---
 const viewerStyle = document.createElement('style');
 viewerStyle.innerHTML = `
-    .media-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; backdrop-filter: blur(5px); }
-    .media-content { max-width: 95%; max-height: 70%; object-fit: contain; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); user-select: auto !important; -webkit-user-select: auto !important; pointer-events: auto !important; }
-    .media-close { position: absolute; top: 20px; right: 20px; color: white; font-size: 30px; cursor: pointer; z-index: 100001; background: rgba(255,255,255,0.1); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
-    .media-actions { position: absolute; bottom: 40px; display: flex; gap: 15px; z-index: 100001; flex-wrap: wrap; justify-content: center; width: 100%; }
-    .media-btn { background: #2563eb; color: white; border: none; padding: 12px 25px; border-radius: 30px; font-weight: 600; font-size: 14px; cursor: pointer; display: flex; align-items: center; gap: 8px; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.4); transition: 0.2s; }
-    .media-btn:active { transform: scale(0.95); }
-    .media-hint { color: #cbd5e1; font-size: 13px; margin-top: 15px; text-align: center; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px; }
+    .media-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000000; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .media-container { width: 100%; height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 60px; padding-bottom: 20px; }
+    .media-content { max-width: 100%; width: auto; height: auto; object-fit: contain; }
+    .media-pdf-frame { width: 100%; height: 90vh; border: none; background: white; }
+    .media-close { position: fixed; top: 15px; right: 15px; color: white; font-size: 24px; cursor: pointer; z-index: 100001; background: rgba(255,255,255,0.2); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+    .media-hint { color: #cbd5e1; font-size: 14px; text-align: center; background: rgba(50,50,50,0.8); padding: 8px 15px; border-radius: 20px; margin-bottom: 10px; width: 80%; }
 `;
 document.head.appendChild(viewerStyle);
 
@@ -85,100 +84,44 @@ function fallbackCopyText(text) {
 }
 
 // ==========================================
-// --- ULTIMATE MOBILE FILE HANDLER v3 ---
+// --- ULTIMATE VIEW & SAVE HANDLER ---
 // ==========================================
 
-// Helper: Base64 to Blob
-const base64ToBlob = (base64Data) => {
-    try {
-        if (!base64Data || !base64Data.includes(',')) return null;
-        const parts = base64Data.split(',');
-        const mime = parts[0].match(/:(.*?);/)[1];
-        const bstr = atob(parts[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
-        return new Blob([u8arr], { type: mime });
-    } catch(e) { console.error("Blob Error", e); return null; }
-};
+window.handleMediaClick = (base64Data, fileName, type) => {
+    // Check Data
+    if (!base64Data || !base64Data.includes(',')) return window.showPremiumAlert("Error", "Invalid file data.", true);
 
-window.handleMediaClick = async (base64Data, fileName, type) => {
-    // 1. Create Overlay
     const overlay = document.createElement('div');
     overlay.className = 'media-overlay';
     
     let contentHTML = '';
     let isImage = type === 'image' || (fileName && fileName.match(/\.(jpeg|jpg|png|gif)$/i));
-    
-    // --- IMAGE LOGIC (Enable Long Press) ---
+
     if (isImage) {
-        contentHTML = `<img src="${base64Data}" class="media-content">
-                       <div class="media-hint">👉 ছবি সেভ করতে ছবির ওপর ২ সেকেন্ড চেপে ধরে রাখুন</div>`;
+        // IMAGE: Show direct IMG tag. 
+        // User MUST long press this to save.
+        contentHTML = `
+            <div class="media-hint">👇 ছবি সেভ করতে ছবির ওপর ২ সেকেন্ড চেপে ধরে রাখুন</div>
+            <img src="${base64Data}" class="media-content" style="pointer-events: auto;">
+        `;
     } else {
-    // --- FILE/PDF LOGIC ---
-        contentHTML = `<i class="fas fa-file-pdf" style="font-size:80px; color:#ef4444; margin-bottom:20px;"></i>
-                       <h3 style="color:white; margin:0; padding:0 20px; text-align:center;">${fileName || 'Document'}</h3>
-                       <div class="media-hint">ফাইলটি সেভ করতে নিচের Share বাটনে ক্লিক করুন</div>`;
+        // PDF/FILE: Embed it.
+        // Android/iOS WebView will render this inside the frame.
+        contentHTML = `
+             <div class="media-hint">ফাইলটি নিচে ওপেন হয়েছে। পড়তে জুম করুন।</div>
+             <iframe src="${base64Data}" class="media-pdf-frame"></iframe>
+        `;
     }
 
     overlay.innerHTML = `
-        <div class="media-close" onclick="this.parentElement.remove()">✕</div>
-        ${contentHTML}
-        <div class="media-actions">
-            <button class="media-btn" id="share-btn"><i class="fas fa-share-alt"></i> Share File</button>
-            <button class="media-btn" id="dl-btn" style="background:#0ea5e9"><i class="fas fa-download"></i> Direct Save</button>
+        <div class="media-close" onclick="this.parentElement.remove()">✕ Close</div>
+        <div class="media-container">
+            ${contentHTML}
         </div>
     `;
     
     document.body.appendChild(overlay);
-
-    // Prepare File Object
-    const blob = base64ToBlob(base64Data);
-    if(blob) {
-        const fileObj = new File([blob], fileName || `file_${Date.now()}.${isImage ? 'jpg':'pdf'}`, { type: blob.type });
-
-        // A. SHARE STRATEGY (Best for Telegram/Mobile)
-        document.getElementById('share-btn').onclick = async () => {
-            if (navigator.share && navigator.canShare({ files: [fileObj] })) {
-                try {
-                    await navigator.share({
-                        files: [fileObj],
-                        title: fileName,
-                        text: 'File from Silent Portal'
-                    });
-                } catch (error) {
-                    // User cancelled share
-                }
-            } else {
-                window.showPremiumAlert("Share Failed", "Device doesn't support direct file sharing.", true);
-            }
-        };
-
-        // B. DIRECT DOWNLOAD STRATEGY (Fallback)
-        document.getElementById('dl-btn').onclick = () => {
-            try {
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = fileName || 'download';
-                document.body.appendChild(a);
-                a.click();
-                
-                window.showPremiumAlert("Downloading...", "Check notifications/downloads.");
-                
-                setTimeout(() => {
-                    document.body.removeChild(a);
-                    window.URL.revokeObjectURL(url);
-                }, 1000);
-            } catch (e) {
-                window.showPremiumAlert("Blocked", "Browser blocked the download.", true);
-            }
-        };
-    } else {
-        window.showPremiumAlert("Error", "File data corrupted.", true);
-    }
 };
-
 
 // --- IMAGE COMPRESSION ---
 const processFile = (file) => {
@@ -612,7 +555,7 @@ window.openChat = (k, id) => {
                         <span style="font-size:12px; font-weight:600;">${m.fileName || 'Document'}</span>
                     </div>
                     <button class="chat-file-download" style="background:#2563eb; color:white; width:100%; justify-content:center;" onclick="window.handleMediaClick('${m.file}', '${m.fileName || 'file'}', 'file')">
-                        <i class="fas fa-download"></i> Save / Share
+                        <i class="fas fa-eye"></i> View File
                     </button>`;
             } else {
                 const linkify = (text) => { const urlRegex = /(https?:\/\/[^\s]+)/g; return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:inherit; text-decoration:underline; font-weight:bold; word-break: break-all;">${url}</a>`; }); };
@@ -628,6 +571,6 @@ window.sendMsg = () => { const t = document.getElementById('chat-in').value; if(
 window.closeChatModal = () => { document.getElementById('chat-modal').style.display='none'; if (chatTimerInterval) clearInterval(chatTimerInterval); if(orderStatusListener) off(orderStatusListener); };
 
 // ================= SECURITY MODULE =================
-// Removed context menu blocker to allow mobile saving
+// Note: We removed the contextmenu preventDefault to allow saving images on mobile
 document.onkeydown = function(e) { if (e.keyCode === 123 || (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74)) || (e.ctrlKey && e.keyCode === 85)) return false; };
 document.querySelectorAll('img').forEach(img => { img.addEventListener('dragstart', e => e.preventDefault()); });
