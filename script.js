@@ -33,7 +33,7 @@ let activeChat = null, chatTimerInterval = null, maintInterval = null, orderStat
 let activeCategory = "All";
 let globalNoticeData = null; 
 
-// --- CSS STYLES ---
+// --- VIEWER CSS ---
 const viewerStyle = document.createElement('style');
 viewerStyle.innerHTML = `
     .media-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; z-index: 99999; display: flex; flex-direction: column; }
@@ -44,31 +44,20 @@ viewerStyle.innerHTML = `
     .media-content { max-width: 100%; height: auto; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
     #pdf-canvas { direction: ltr; background: white; margin-bottom: 100px; max-width: 100%; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
     
-    .viewer-controls { position: fixed; bottom: 0; left: 0; width: 100%; background: #1e293b; padding: 15px 10px; display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 10px; border-top: 1px solid #334155; z-index: 100000; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
+    .viewer-controls { position: fixed; bottom: 0; left: 0; width: 100%; background: #1e293b; padding: 15px 10px; display: grid; grid-template-columns: 1fr 3fr 1fr; gap: 10px; border-top: 1px solid #334155; z-index: 100000; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
     .ctrl-btn { background: #334155; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 16px; }
     .ctrl-btn span { font-size: 10px; opacity: 0.8; }
-    .ctrl-btn.primary { background: #2563eb; color: white; font-weight: bold; }
+    .ctrl-btn.primary { background: #2563eb; color: white; font-weight: bold; background: linear-gradient(135deg, #2563eb, #1d4ed8); }
     .ctrl-btn.secondary { background: #0f172a; border: 1px solid #334155; }
     
     .pdf-nav { position: fixed; bottom: 100px; left: 50%; transform: translateX(-50%); background: rgba(30, 41, 59, 0.9); padding: 8px 15px; border-radius: 30px; display: none; gap: 15px; align-items: center; color: white; font-size: 14px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); z-index: 100000; }
     .nav-btn { background: none; border: none; color: white; font-size: 16px; cursor: pointer; }
     .loading-spinner { border: 4px solid rgba(255,255,255,0.1); border-top: 4px solid #3b82f6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; position: absolute; top: 50%; left: 50%; margin-left: -20px; margin-top: -20px; }
+    
+    /* Progress Bar */
+    .upload-progress { position: absolute; bottom: 0; left: 0; height: 4px; background: #10b981; width: 0%; transition: width 0.3s; z-index: 100002; }
 `;
 document.head.appendChild(viewerStyle);
-
-// --- HELPER: BASE64 TO BLOB ---
-const base64ToBlob = (base64Data) => {
-    try {
-        if (!base64Data || !base64Data.includes(',')) return null;
-        const parts = base64Data.split(',');
-        const mime = parts[0].match(/:(.*?);/)[1];
-        const bstr = atob(parts[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
-        return new Blob([u8arr], { type: mime });
-    } catch(e) { console.error("Blob Error", e); return null; }
-};
 
 // --- THEME ---
 window.toggleTheme = () => {
@@ -101,59 +90,76 @@ function fallbackCopyText(text) {
 }
 
 // ===============================================
-// --- UNIVERSAL DOWNLOAD & SAVE SYSTEM ---
+// --- SERVER UPLOAD & DOWNLOAD SYSTEM ---
 // ===============================================
 
-window.universalSave = async (base64Data, fileName, isImage) => {
+const base64ToBlob = (base64Data) => {
+    try {
+        if (!base64Data || !base64Data.includes(',')) return null;
+        const parts = base64Data.split(',');
+        const mime = parts[0].match(/:(.*?);/)[1];
+        const bstr = atob(parts[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
+        return new Blob([u8arr], { type: mime });
+    } catch(e) { return null; }
+};
+
+window.uploadAndDownload = async (base64Data, fileName, isImage) => {
+    const btn = document.getElementById('server-dl-btn');
+    const originalContent = btn.innerHTML;
+    const progress = document.getElementById('upload-bar');
+    
+    // 1. Prepare File
     const blob = base64ToBlob(base64Data);
-    if (!blob) return window.showPremiumAlert("Error", "File data invalid.", true);
-
+    if (!blob) return window.showPremiumAlert("Error", "File corrupted.", true);
+    
     const safeName = fileName ? fileName.replace(/[^a-zA-Z0-9.]/g, '_') : `file_${Date.now()}.${isImage ? 'jpg' : 'pdf'}`;
-    const fileObj = new File([blob], safeName, { type: blob.type });
-    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    const formData = new FormData();
+    formData.append('file', blob, safeName);
+    
+    // 2. Upload to Server (File.io - Free, No Auth, Expires after download)
+    // Note: We use file.io because it allows CORS and returns a direct link.
+    // Ideally, you should use your own backend or Firebase Storage for permanent storage.
+    
+    try {
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin"></i><span>UPLOADING...</span>`;
+        progress.style.width = "50%";
 
-    // STRATEGY 1: PC Direct Download
-    if (!isMobile) {
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.style.display = 'none';
-        a.href = url;
-        a.download = safeName;
-        document.body.appendChild(a);
-        a.click();
-        window.showPremiumAlert("Downloading", "Check your browser downloads.");
-        setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 2000);
-        return;
-    }
+        const response = await fetch('https://file.io/?expires=1d', {
+            method: 'POST',
+            body: formData
+        });
 
-    // STRATEGY 2: Mobile Share (Attempt)
-    let shareSuccess = false;
-    if (navigator.share && navigator.canShare({ files: [fileObj] })) {
-        try {
-            await navigator.share({
-                files: [fileObj],
-                title: safeName,
-                text: "File from Silent Portal"
-            });
-            shareSuccess = true;
-        } catch (e) {
-            console.log("Share failed or cancelled, trying fallback...");
+        if (!response.ok) throw new Error("Upload failed");
+        
+        const data = await response.json();
+        progress.style.width = "100%";
+        
+        if (data.success && data.link) {
+            btn.innerHTML = `<i class="fas fa-check"></i><span>OPENING...</span>`;
+            window.showPremiumAlert("Success", "File link generated!", false);
+            
+            // 3. Open the Generated Link
+            // This works in Telegram because it's a standard HTTPS link, not a blob.
+            setTimeout(() => {
+                window.open(data.link, '_system'); // '_system' helps in some WebViews
+            }, 500);
+        } else {
+            throw new Error("Server error");
         }
-    }
 
-    // STRATEGY 3: Fallback if Share fails (For Telegram WebView)
-    if (!shareSuccess) {
-        window.showPremiumAlert("Opening...", "Please download from the new tab.", false);
-        try {
-            const url = window.URL.createObjectURL(blob);
-            // Open in new tab - this usually triggers browser download manager
-            const win = window.open(url, '_blank');
-            if(!win) {
-                window.location.href = url; // Hard redirect if popup blocked
-            }
-        } catch (e) {
-            window.showPremiumAlert("Error", "Browser blocked the file.", true);
-        }
+    } catch (e) {
+        console.error(e);
+        window.showPremiumAlert("Upload Error", "Could not generate link.", true);
+    } finally {
+        setTimeout(() => {
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+            progress.style.width = "0%";
+        }, 2000);
     }
 };
 
@@ -173,6 +179,9 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
             <div class="loading-spinner" id="spinner"></div>
         </div>
         
+        <!-- Progress Bar for Upload -->
+        <div class="upload-progress" id="upload-bar"></div>
+
         <div class="pdf-nav" id="pdf-nav">
             <button class="nav-btn" id="prev-page"><i class="fas fa-chevron-left"></i></button>
             <span id="page-num">1 / 1</span>
@@ -181,8 +190,13 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
 
         <div class="viewer-controls">
             <button class="ctrl-btn secondary" id="zoom-toggle"><i class="fas fa-search-plus"></i></button>
-            <button class="ctrl-btn primary" id="main-save-btn"><i class="fas fa-download"></i><span>DOWNLOAD</span></button>
-            <button class="ctrl-btn secondary" id="open-ext"><i class="fas fa-external-link-alt"></i></button>
+            
+            <!-- MAIN SERVER UPLOAD BUTTON -->
+            <button class="ctrl-btn primary" id="server-dl-btn">
+                <i class="fas fa-cloud-download-alt"></i><span>GET LINK</span>
+            </button>
+            
+            <button class="ctrl-btn secondary" id="force-share"><i class="fas fa-share-alt"></i></button>
         </div>
     `;
     
@@ -193,66 +207,57 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
     const spinner = document.getElementById('spinner');
     let scale = 1;
 
-    // Render Logic
     if (isImage) {
         spinner.style.display = 'none';
         const img = document.createElement('img');
         img.src = base64Data;
         img.className = 'media-content';
         body.appendChild(img);
-        document.getElementById('zoom-toggle').onclick = () => { 
-            scale = (scale === 1) ? 2 : 1; 
-            img.style.transform = `scale(${scale})`; img.style.transition = "0.3s";
-        };
+        document.getElementById('zoom-toggle').onclick = () => { scale = (scale === 1) ? 2 : 1; img.style.transform = `scale(${scale})`; img.style.transition="0.3s"; };
     } else {
-        // PDF Logic
-        let pdfDoc = null, canvas = document.createElement('canvas'), ctx = canvas.getContext('2d'), pageNum = 1;
-        canvas.id = 'pdf-canvas'; body.appendChild(canvas);
+        let pdfDoc=null, canvas=document.createElement('canvas'), ctx=canvas.getContext('2d'), pageNum=1;
+        canvas.id='pdf-canvas'; body.appendChild(canvas);
         const pdfNav = document.getElementById('pdf-nav');
 
         try {
             const pdfData = atob(base64Data.split(',')[1]);
-            if(typeof pdfjsLib === 'undefined') throw new Error("PDF Engine loading...");
-            
+            if(typeof pdfjsLib === 'undefined') throw new Error("Loading PDF Engine...");
             const loadingTask = pdfjsLib.getDocument({data: pdfData});
             pdfDoc = await loadingTask.promise;
             
-            spinner.style.display = 'none';
-            pdfNav.style.display = 'flex';
+            spinner.style.display='none'; pdfNav.style.display='flex';
             
             const renderPage = async (num) => {
                 const page = await pdfDoc.getPage(num);
                 const viewport = page.getViewport({scale: scale});
-                canvas.height = viewport.height;
-                canvas.width = viewport.width;
+                canvas.height = viewport.height; canvas.width = viewport.width;
                 await page.render({ canvasContext: ctx, viewport: viewport }).promise;
                 document.getElementById('page-num').innerText = `${num} / ${pdfDoc.numPages}`;
             };
             renderPage(pageNum);
 
-            document.getElementById('prev-page').onclick = () => { if(pageNum > 1) { pageNum--; renderPage(pageNum); } };
-            document.getElementById('next-page').onclick = () => { if(pageNum < pdfDoc.numPages) { pageNum++; renderPage(pageNum); } };
-            document.getElementById('zoom-toggle').onclick = () => { scale = (scale === 1.0) ? 1.5 : 1.0; renderPage(pageNum); };
-
-        } catch (error) {
-            spinner.style.display = 'none';
-            body.innerHTML = `<p style="color:#ef4444;text-align:center;margin-top:50px;">Rendering Error.</p>`;
+            document.getElementById('prev-page').onclick = () => { if(pageNum>1) { pageNum--; renderPage(pageNum); } };
+            document.getElementById('next-page').onclick = () => { if(pageNum<pdfDoc.numPages) { pageNum++; renderPage(pageNum); } };
+            document.getElementById('zoom-toggle').onclick = () => { scale = (scale===1.0)?1.5:1.0; renderPage(pageNum); };
+        } catch(e) {
+            spinner.style.display='none'; body.innerHTML=`<p style="color:#ef4444;text-align:center;margin-top:50px;">Use Download Button</p>`;
         }
     }
 
-    // --- BUTTON ACTIONS ---
-    
-    // 1. MAIN DOWNLOAD BUTTON (Smart logic)
-    document.getElementById('main-save-btn').onclick = () => {
-        window.universalSave(base64Data, fileName, isImage);
+    // --- ACTION: UPLOAD TO SERVER & GET LINK ---
+    document.getElementById('server-dl-btn').onclick = () => {
+        window.uploadAndDownload(base64Data, fileName, isImage);
     };
 
-    // 2. EXTERNAL OPEN (Manual fallback)
-    document.getElementById('open-ext').onclick = () => {
+    // --- ACTION: FORCE SHARE (Backup) ---
+    document.getElementById('force-share').onclick = () => {
         const blob = base64ToBlob(base64Data);
-        if(blob) {
-            const url = window.URL.createObjectURL(blob);
-            window.open(url, '_blank');
+        if(!blob) return;
+        const fileObj = new File([blob], fileName || "file", { type: blob.type });
+        if(navigator.share && navigator.canShare({ files: [fileObj] })) {
+            navigator.share({ files: [fileObj], title: fileName });
+        } else {
+            window.showPremiumAlert("Share Error", "Use the 'Get Link' button.", true);
         }
     };
 };
