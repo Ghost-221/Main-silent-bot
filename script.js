@@ -2,7 +2,7 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.1/firebase
 import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-auth.js";
 import { getDatabase, ref, set, push, onValue, runTransaction, off, query, orderByChild, equalTo, onChildChanged, remove } from "https://www.gstatic.com/firebasejs/9.6.1/firebase-database.js";
 
-// --- LOAD PDF ENGINE AUTOMATICALLY ---
+// --- LOAD PDF ENGINE ---
 const pdfScript = document.createElement('script');
 pdfScript.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
 pdfScript.onload = () => {
@@ -15,7 +15,7 @@ if (window.location.pathname.includes('admin.html')) {
     throw new Error("User script halted on Admin Page.");
 }
 
-// --- SOUND EFFECTS ---
+// --- SOUNDS ---
 const sndMsg = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3');
 const sndSuccess = new Audio('https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.mp3');
 const sndAlert = new Audio('https://assets.mixkit.co/active_storage/sfx/951/951-preview.mp3');
@@ -33,7 +33,7 @@ let activeChat = null, chatTimerInterval = null, maintInterval = null, orderStat
 let activeCategory = "All";
 let globalNoticeData = null; 
 
-// --- VIEWER CSS ---
+// --- CSS STYLES ---
 const viewerStyle = document.createElement('style');
 viewerStyle.innerHTML = `
     .media-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0f172a; z-index: 99999; display: flex; flex-direction: column; }
@@ -44,7 +44,6 @@ viewerStyle.innerHTML = `
     .media-content { max-width: 100%; height: auto; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
     #pdf-canvas { direction: ltr; background: white; margin-bottom: 100px; max-width: 100%; box-shadow: 0 0 15px rgba(0,0,0,0.5); }
     
-    /* NEW CONTROLS LAYOUT */
     .viewer-controls { position: fixed; bottom: 0; left: 0; width: 100%; background: #1e293b; padding: 15px 10px; display: grid; grid-template-columns: 1fr 2fr 1fr; gap: 10px; border-top: 1px solid #334155; z-index: 100000; padding-bottom: max(15px, env(safe-area-inset-bottom)); }
     .ctrl-btn { background: #334155; color: white; border: none; padding: 12px; border-radius: 8px; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; font-size: 16px; }
     .ctrl-btn span { font-size: 10px; opacity: 0.8; }
@@ -57,56 +56,7 @@ viewerStyle.innerHTML = `
 `;
 document.head.appendChild(viewerStyle);
 
-// --- THEME ---
-window.toggleTheme = () => {
-    const isDark = document.body.getAttribute('data-theme') === 'dark';
-    document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
-    localStorage.setItem('theme', isDark ? 'light' : 'dark');
-};
-if(localStorage.getItem('theme') === 'dark') document.body.setAttribute('data-theme', 'dark');
-
-// --- ALERTS ---
-window.showPremiumAlert = (title, msg, isError = false) => {
-    let container = document.getElementById('toast-container');
-    if(!container) { 
-        container = document.createElement('div'); container.id = 'toast-container'; container.className = 'toast-container'; document.body.appendChild(container); 
-    }
-    const toast = document.createElement('div'); toast.className = `premium-toast ${isError ? 'error' : 'success'}`;
-    const icon = isError ? '<i class="fas fa-times-circle"></i>' : '<i class="fas fa-check-circle"></i>';
-    toast.innerHTML = `<div class="p-toast-icon">${icon}</div><div class="p-toast-content"><h4>${title}</h4><p>${msg}</p></div>`;
-    container.appendChild(toast);
-    setTimeout(() => { toast.style.transition = "all 0.5s ease"; toast.style.opacity = '0'; toast.style.transform = 'translateY(-20px)'; setTimeout(() => toast.remove(), 500); }, 3500);
-};
-
-// --- COPY UTILITY ---
-window.copyText = (text) => {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(text).then(() => {
-            window.showPremiumAlert("Copied! 📋", "Text copied to clipboard.");
-        }).catch(err => fallbackCopyText(text));
-    } else {
-        fallbackCopyText(text);
-    }
-};
-
-function fallbackCopyText(text) {
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed"; textArea.style.opacity = "0";
-    document.body.appendChild(textArea);
-    textArea.focus(); textArea.select();
-    try {
-        const successful = document.execCommand('copy');
-        if(successful) window.showPremiumAlert("Copied! 📋", "Text copied to clipboard.");
-        else window.showPremiumAlert("Error", "Failed to copy text.", true);
-    } catch (err) { window.showPremiumAlert("Error", "Failed to copy text.", true); }
-    document.body.removeChild(textArea);
-}
-
-// ==========================================
-// --- ULTIMATE TELEGRAM FILE HANDLER ---
-// ==========================================
-
+// --- HELPER: BASE64 TO BLOB ---
 const base64ToBlob = (base64Data) => {
     try {
         if (!base64Data || !base64Data.includes(',')) return null;
@@ -120,6 +70,94 @@ const base64ToBlob = (base64Data) => {
     } catch(e) { console.error("Blob Error", e); return null; }
 };
 
+// --- THEME ---
+window.toggleTheme = () => {
+    const isDark = document.body.getAttribute('data-theme') === 'dark';
+    document.body.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    localStorage.setItem('theme', isDark ? 'light' : 'dark');
+};
+if(localStorage.getItem('theme') === 'dark') document.body.setAttribute('data-theme', 'dark');
+
+// --- ALERTS ---
+window.showPremiumAlert = (title, msg, isError = false) => {
+    let container = document.getElementById('toast-container');
+    if(!container) { container = document.createElement('div'); container.id = 'toast-container'; container.className = 'toast-container'; document.body.appendChild(container); }
+    const toast = document.createElement('div'); toast.className = `premium-toast ${isError ? 'error' : 'success'}`;
+    const icon = isError ? '<i class="fas fa-times-circle"></i>' : '<i class="fas fa-check-circle"></i>';
+    toast.innerHTML = `<div class="p-toast-icon">${icon}</div><div class="p-toast-content"><h4>${title}</h4><p>${msg}</p></div>`;
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.transition = "all 0.5s ease"; toast.style.opacity = '0'; toast.style.transform = 'translateY(-20px)'; setTimeout(() => toast.remove(), 500); }, 3500);
+};
+
+// --- COPY ---
+window.copyText = (text) => {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => window.showPremiumAlert("Copied! 📋", "Text copied.")).catch(err => fallbackCopyText(text));
+    } else fallbackCopyText(text);
+};
+function fallbackCopyText(text) {
+    const t = document.createElement("textarea"); t.value = text; t.style.position = "fixed"; t.style.opacity = "0"; document.body.appendChild(t); t.focus(); t.select();
+    try { document.execCommand('copy'); window.showPremiumAlert("Copied! 📋", "Text copied."); } catch (err) {} document.body.removeChild(t);
+}
+
+// ===============================================
+// --- UNIVERSAL DOWNLOAD & SAVE SYSTEM ---
+// ===============================================
+
+window.universalSave = async (base64Data, fileName, isImage) => {
+    const blob = base64ToBlob(base64Data);
+    if (!blob) return window.showPremiumAlert("Error", "File data invalid.", true);
+
+    const safeName = fileName ? fileName.replace(/[^a-zA-Z0-9.]/g, '_') : `file_${Date.now()}.${isImage ? 'jpg' : 'pdf'}`;
+    const fileObj = new File([blob], safeName, { type: blob.type });
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
+    // STRATEGY 1: PC Direct Download
+    if (!isMobile) {
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = safeName;
+        document.body.appendChild(a);
+        a.click();
+        window.showPremiumAlert("Downloading", "Check your browser downloads.");
+        setTimeout(() => { document.body.removeChild(a); window.URL.revokeObjectURL(url); }, 2000);
+        return;
+    }
+
+    // STRATEGY 2: Mobile Share (Attempt)
+    let shareSuccess = false;
+    if (navigator.share && navigator.canShare({ files: [fileObj] })) {
+        try {
+            await navigator.share({
+                files: [fileObj],
+                title: safeName,
+                text: "File from Silent Portal"
+            });
+            shareSuccess = true;
+        } catch (e) {
+            console.log("Share failed or cancelled, trying fallback...");
+        }
+    }
+
+    // STRATEGY 3: Fallback if Share fails (For Telegram WebView)
+    if (!shareSuccess) {
+        window.showPremiumAlert("Opening...", "Please download from the new tab.", false);
+        try {
+            const url = window.URL.createObjectURL(blob);
+            // Open in new tab - this usually triggers browser download manager
+            const win = window.open(url, '_blank');
+            if(!win) {
+                window.location.href = url; // Hard redirect if popup blocked
+            }
+        } catch (e) {
+            window.showPremiumAlert("Error", "Browser blocked the file.", true);
+        }
+    }
+};
+
+// --- VIEWER ---
 window.handleMediaClick = async (base64Data, fileName, type) => {
     const overlay = document.createElement('div');
     overlay.className = 'media-overlay';
@@ -135,24 +173,16 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
             <div class="loading-spinner" id="spinner"></div>
         </div>
         
-        <!-- PDF Nav -->
         <div class="pdf-nav" id="pdf-nav">
             <button class="nav-btn" id="prev-page"><i class="fas fa-chevron-left"></i></button>
             <span id="page-num">1 / 1</span>
             <button class="nav-btn" id="next-page"><i class="fas fa-chevron-right"></i></button>
         </div>
 
-        <!-- NEW CONTROLS FOR MOBILE -->
         <div class="viewer-controls">
-            <button class="ctrl-btn secondary" id="zoom-toggle">
-                <i class="fas fa-search-plus"></i>
-            </button>
-            <button class="ctrl-btn primary" id="share-btn">
-                <i class="fas fa-share-alt"></i><span>SHARE / SAVE</span>
-            </button>
-            <button class="ctrl-btn secondary" id="open-ext">
-                <i class="fas fa-external-link-alt"></i>
-            </button>
+            <button class="ctrl-btn secondary" id="zoom-toggle"><i class="fas fa-search-plus"></i></button>
+            <button class="ctrl-btn primary" id="main-save-btn"><i class="fas fa-download"></i><span>DOWNLOAD</span></button>
+            <button class="ctrl-btn secondary" id="open-ext"><i class="fas fa-external-link-alt"></i></button>
         </div>
     `;
     
@@ -161,31 +191,23 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
 
     const body = document.getElementById('viewer-body');
     const spinner = document.getElementById('spinner');
-
-    // --- RENDER LOGIC ---
     let scale = 1;
-    let renderPageFn = null;
-    let pageNum = 1;
 
+    // Render Logic
     if (isImage) {
         spinner.style.display = 'none';
         const img = document.createElement('img');
         img.src = base64Data;
         img.className = 'media-content';
         body.appendChild(img);
-        
-        // Image Zoom
         document.getElementById('zoom-toggle').onclick = () => { 
             scale = (scale === 1) ? 2 : 1; 
-            img.style.transform = `scale(${scale})`; 
-            img.style.transition = "transform 0.3s";
+            img.style.transform = `scale(${scale})`; img.style.transition = "0.3s";
         };
     } else {
-        // PDF RENDERER (PDF.JS)
-        let pdfDoc = null;
-        let canvas = document.createElement('canvas');
+        // PDF Logic
+        let pdfDoc = null, canvas = document.createElement('canvas'), ctx = canvas.getContext('2d'), pageNum = 1;
         canvas.id = 'pdf-canvas'; body.appendChild(canvas);
-        const ctx = canvas.getContext('2d');
         const pdfNav = document.getElementById('pdf-nav');
 
         try {
@@ -198,7 +220,7 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
             spinner.style.display = 'none';
             pdfNav.style.display = 'flex';
             
-            renderPageFn = async (num) => {
+            const renderPage = async (num) => {
                 const page = await pdfDoc.getPage(num);
                 const viewport = page.getViewport({scale: scale});
                 canvas.height = viewport.height;
@@ -206,57 +228,31 @@ window.handleMediaClick = async (base64Data, fileName, type) => {
                 await page.render({ canvasContext: ctx, viewport: viewport }).promise;
                 document.getElementById('page-num').innerText = `${num} / ${pdfDoc.numPages}`;
             };
-            renderPageFn(pageNum);
+            renderPage(pageNum);
 
-            document.getElementById('prev-page').onclick = () => { if(pageNum > 1) { pageNum--; renderPageFn(pageNum); } };
-            document.getElementById('next-page').onclick = () => { if(pageNum < pdfDoc.numPages) { pageNum++; renderPageFn(pageNum); } };
-            
-            // PDF Zoom
-            document.getElementById('zoom-toggle').onclick = () => { 
-                scale = (scale === 1.0) ? 1.5 : 1.0; 
-                renderPageFn(pageNum); 
-            };
+            document.getElementById('prev-page').onclick = () => { if(pageNum > 1) { pageNum--; renderPage(pageNum); } };
+            document.getElementById('next-page').onclick = () => { if(pageNum < pdfDoc.numPages) { pageNum++; renderPage(pageNum); } };
+            document.getElementById('zoom-toggle').onclick = () => { scale = (scale === 1.0) ? 1.5 : 1.0; renderPage(pageNum); };
 
         } catch (error) {
             spinner.style.display = 'none';
-            body.innerHTML = `<p style="color:#ef4444;text-align:center;margin-top:50px;">Rendering Failed.<br>Please use the Share button to view.</p>`;
+            body.innerHTML = `<p style="color:#ef4444;text-align:center;margin-top:50px;">Rendering Error.</p>`;
         }
     }
 
-    // --- BUTTON 1: SHARE (THE FIX FOR TELEGRAM) ---
-    document.getElementById('share-btn').onclick = async () => {
-        const blob = base64ToBlob(base64Data);
-        if(!blob) return;
-
-        const safeName = fileName ? fileName.replace(/[^a-zA-Z0-9.]/g, '_') : `file_${Date.now()}.${isImage ? 'jpg' : 'pdf'}`;
-        const fileObj = new File([blob], safeName, { type: blob.type });
-
-        if (navigator.share && navigator.canShare({ files: [fileObj] })) {
-            try {
-                await navigator.share({
-                    files: [fileObj],
-                    title: fileName,
-                    text: "File from Silent Portal"
-                });
-            } catch (err) {
-                // Share cancelled
-            }
-        } else {
-            window.showPremiumAlert("Share Error", "Device doesn't support sharing.", true);
-        }
+    // --- BUTTON ACTIONS ---
+    
+    // 1. MAIN DOWNLOAD BUTTON (Smart logic)
+    document.getElementById('main-save-btn').onclick = () => {
+        window.universalSave(base64Data, fileName, isImage);
     };
 
-    // --- BUTTON 2: EXTERNAL OPEN (FALLBACK) ---
+    // 2. EXTERNAL OPEN (Manual fallback)
     document.getElementById('open-ext').onclick = () => {
         const blob = base64ToBlob(base64Data);
-        if(!blob) return;
-        
-        try {
+        if(blob) {
             const url = window.URL.createObjectURL(blob);
             window.open(url, '_blank');
-            window.showPremiumAlert("Opening...", "Check browser tabs.");
-        } catch(e) {
-            window.showPremiumAlert("Blocked", "Browser blocked the window.", true);
         }
     };
 };
@@ -533,92 +529,6 @@ window.submitDeposit = async () => {
         window.closePayModal(); window.showPremiumAlert("Submitted!", "Request sent for approval.");
         document.getElementById('d-name').value = ""; document.getElementById('d-mobile').value = ""; document.getElementById('d-amt').value = ""; document.getElementById('d-trx').value = ""; fileInput.value = ""; fileInput.parentNode.querySelector('.file-preview-name').innerText = "";
     } catch(e) { window.showPremiumAlert("Error", "Failed to upload.", true); } finally { btn.innerHTML = "Confirm"; btn.disabled = false; }
-};
-
-function renderCategories() {
-    const catBar = document.getElementById('category-bar'); if(!catBar) return;
-    catBar.innerHTML = `<div class="cat-chip ${activeCategory === "All" ? 'active' : ''}" onclick="window.filterServices('All', this)">All</div>`;
-    Object.values(globalCategories).forEach(catName => { catBar.innerHTML += `<div class="cat-chip ${catName === activeCategory ? 'active' : ''}" onclick="window.filterServices('${catName}', this)">${catName}</div>`; });
-}
-
-window.renderServiceGrid = () => {
-    const grid = document.getElementById('dynamic-services-grid'); if(!grid) return;
-    const query = document.getElementById('search-inp') ? document.getElementById('search-inp').value.toLowerCase() : "";
-    grid.innerHTML = ""; let hasService = false;
-    Object.entries(globalServices).forEach(([key, svc]) => {
-        const isCatMatch = activeCategory === "All" || (svc.category || "Others") === activeCategory;
-        const isSearchMatch = svc.name.toLowerCase().includes(query);
-        if (isCatMatch && isSearchMatch) {
-            hasService = true;
-            const isAvailable = svc.active !== false;
-            const statusHTML = !isAvailable ? '<div class="svc-status-badge">Unavailable</div>' : '';
-            const cardClass = isAvailable ? 'svc-card' : 'svc-card disabled';
-            const clickAction = isAvailable ? `window.openOrder('${key}')` : '';
-            const colors = ['#f59e0b', '#3b82f6', '#0ea5e9', '#6366f1', '#8b5cf6', '#ec4899', '#10b981', '#ef4444'];
-            const rndColor = colors[key.length % colors.length];
-            grid.innerHTML += `<div class="${cardClass}" onclick="${clickAction}">${statusHTML}<div class="svc-icon" style="background:${rndColor}"><i class="${svc.icon}"></i></div><b style="font-size:13px;">${svc.name}</b><br><span class="svc-price">৳ ${svc.price}</span></div>`;
-        }
-    });
-    if(!hasService) grid.innerHTML = `<div style="grid-column: span 2; text-align: center; color:var(--text-muted); padding:20px;">No services found matching "${query}"</div>`;
-};
-
-window.filterServices = (cat, el) => { activeCategory = cat; document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active')); el.classList.add('active'); window.renderServiceGrid(); };
-
-// --- OPEN ORDER ---
-window.openOrder = (key) => {
-    const svc = globalServices[key]; if(!svc) return;
-    curSvcKey = key; curBasePrice = parseInt(svc.price); curFinalPrice = curBasePrice; 
-    document.getElementById('ord-title').innerText = svc.name; document.getElementById('ord-cost').innerText = curFinalPrice;
-    const instrBox = document.getElementById('ord-instruction');
-    if(instrBox) { if(svc.instruction && svc.instruction.trim() !== "") { instrBox.style.display = 'block'; instrBox.innerHTML = svc.instruction.replace(/\n/g, "<br>"); } else { instrBox.style.display = 'none'; } }
-    const formContainer = document.getElementById('ord-dynamic-form'); formContainer.innerHTML = ""; const fields = globalForms[key] || [];
-    if(fields.length === 0) formContainer.innerHTML = `<div class="form-group"><label class="input-label">Details</label><textarea class="auth-inp dynamic-field" data-label="Details" rows="4"></textarea></div>`;
-    else {
-        fields.forEach(f => {
-            let html = ""; const safeLabel = f.label.replace(/[^a-zA-Z0-9]/g, '_');
-            if(f.type === 'textarea') html = `<textarea class="auth-inp dynamic-field" data-label="${f.label}" rows="4" placeholder="${f.label}"></textarea>`;
-            else if (f.type === 'link') html = `<input class="auth-inp dynamic-field" type="url" data-label="${f.label}" placeholder="https://...">`;
-            else if (f.type === 'file_url') {
-                html = `<div class="form-group"><label class="input-label" style="margin-bottom: 5px; display: block;">${f.label}</label><div class="file-upload-wrapper"><input type="file" class="file-upload-input dynamic-file-field" data-label="${f.label}" accept="*/*" onchange="window.handleFileSelect(this)"><div class="file-upload-label"><i class="fas fa-cloud-upload-alt"></i> Choose File/Image</div><span class="file-preview-name"></span></div></div>`;
-            }
-            else if(f.type === 'radio_grid') {
-                const opts = f.options.split(',').map(s => s.trim()); let boxes = "";
-                opts.forEach(opt => { const parts = opt.split('='); const name = parts[0].trim(); let price = null; if (parts.length > 1 && !isNaN(parseInt(parts[1].trim()))) price = parseInt(parts[1].trim()); const priceAttr = price ? `data-price="${price}"` : ''; const priceDisplay = price ? `<span class="opt-price-tag">৳ ${price}</span>` : ''; boxes += `<div class="select-option" onclick="window.selectOption(this, '${safeLabel}')" ${priceAttr} data-val="${name}">${name}${priceDisplay}</div>`; });
-                html = `<div class="select-box-grid" id="grp-${safeLabel}">${boxes}</div><input type="hidden" class="dynamic-field" data-label="${f.label}" id="input-${safeLabel}">`;
-            } else html = `<input class="auth-inp dynamic-field" type="${f.type}" data-label="${f.label}" placeholder="${f.label}">`;
-            
-            if(f.type !== 'file_url') formContainer.innerHTML += `<div class="form-group"><label class="input-label">${f.label}</label>${html}</div>`;
-            else formContainer.innerHTML += html; 
-        });
-    }
-    document.getElementById('ord-modal').style.display = 'flex';
-};
-
-window.handleFileSelect = (input) => { const fileNameSpan = input.parentNode.querySelector('.file-preview-name'); if (input.files && input.files[0]) fileNameSpan.innerText = "Selected: " + input.files[0].name; else fileNameSpan.innerText = ""; };
-window.selectOption = (el, label) => { const grp = document.getElementById(`grp-${label}`); if (grp) { grp.querySelectorAll('.select-option').forEach(b => b.classList.remove('active')); el.classList.add('active'); document.getElementById(`input-${label}`).value = el.getAttribute('data-val'); const priceOverride = el.getAttribute('data-price'); if(priceOverride) curFinalPrice = parseInt(priceOverride); else curFinalPrice = curBasePrice; document.getElementById('ord-cost').innerText = curFinalPrice; } };
-
-window.confirmOrder = async () => {
-    const btn = document.querySelector('#ord-modal .btn-main'); const inputs = document.querySelectorAll('.dynamic-field'); let details = ""; let empty = false;
-    inputs.forEach(i => { const val = i.value.trim(); const lbl = i.getAttribute('data-label'); if(!val) empty = true; details += `${lbl}: ${val}\n`; });
-    const fileInputs = document.querySelectorAll('.dynamic-file-field'); let fileDataUrl = ""; let hasFileField = fileInputs.length > 0; let fileSelected = false;
-    if(hasFileField) { const fileInput = fileInputs[0]; if(fileInput.files.length > 0) { fileSelected = true; const file = fileInput.files[0]; if(file.size > 10 * 1024 * 1024) return window.showPremiumAlert("Error", "File too large (Max 10MB)", true); btn.innerHTML = "Uploading..."; btn.disabled = true; try { fileDataUrl = await processFile(file); } catch (e) { btn.innerHTML = "Order Now"; btn.disabled = false; return window.showPremiumAlert("Error", "Failed to read file", true); } } }
-    if(empty) { if(hasFileField) { btn.innerHTML = "Order Now"; btn.disabled = false; } return window.showPremiumAlert("Missing Info", "Please fill all text fields.", true); }
-    if(hasFileField && !fileSelected) { if(hasFileField) { btn.innerHTML = "Order Now"; btn.disabled = false; } return window.showPremiumAlert("Missing Info", "Please select a file.", true); }
-    btn.innerHTML = "Processing..."; btn.disabled = true;
-    runTransaction(ref(db, 'users/' + user.uid + '/balance'), (bal) => { if (bal >= curFinalPrice) return bal - curFinalPrice; return; }).then(async (res) => { 
-        if(res.committed) { 
-            const shortId = Math.floor(100000 + Math.random() * 900000).toString(); 
-            const newOrderRef = push(ref(db, 'orders')); 
-            await set(newOrderRef, { userId: user.uid, uName: userData.name, service: globalServices[curSvcKey].name, cost: curFinalPrice, details: details, file: fileDataUrl, status: 'pending', timestamp: Date.now(), orderId_visible: shortId }); 
-            window.showPremiumAlert("Success", "Order Placed!"); 
-            await push(ref(db, 'chats/'+newOrderRef.key), {s:'sys', t:`Order Placed. ID: ${shortId}`});
-            const autoMsg = "আপনার অর্ডার অ্যাডমিন প্যানেলে সাবমিট হয়েছে। একজন অ্যাডমিন শীঘ্রই আপনার সাথে কথা বলবেন। ততক্ষণ চ্যাট বক্সে থাকুন। ধন্যবাদ।";
-            await push(ref(db, 'chats/'+newOrderRef.key), {s:'admin', t: autoMsg});
-            document.getElementById('ord-modal').style.display='none'; 
-            window.openChat(newOrderRef.key, shortId); 
-        } else window.showPremiumAlert("Failed", "Insufficient Balance!", true); 
-        btn.innerHTML = "Order Now"; btn.disabled = false;
-    }).catch(e => { btn.innerHTML = "Order Now"; btn.disabled = false; window.showPremiumAlert("Error", "Transaction failed", true); });
 };
 
 window.handleChatFile = async (input) => {
