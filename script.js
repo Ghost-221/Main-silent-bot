@@ -25,6 +25,18 @@ let activeChat = null, chatTimerInterval = null, maintInterval = null, orderStat
 let activeCategory = "All";
 let globalNoticeData = null; 
 
+// --- VIEWER CSS (UPDATED FOR SCROLLING) ---
+const viewerStyle = document.createElement('style');
+viewerStyle.innerHTML = `
+    .media-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #000000; z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .media-container { width: 100%; height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding-top: 60px; padding-bottom: 20px; }
+    .media-content { max-width: 100%; width: auto; height: auto; object-fit: contain; }
+    .media-pdf-frame { width: 100%; height: 90vh; border: none; background: white; }
+    .media-close { position: fixed; top: 15px; right: 15px; color: white; font-size: 24px; cursor: pointer; z-index: 100001; background: rgba(255,255,255,0.2); width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
+    .media-hint { color: #cbd5e1; font-size: 14px; text-align: center; background: rgba(50,50,50,0.8); padding: 8px 15px; border-radius: 20px; margin-bottom: 10px; width: 80%; }
+`;
+document.head.appendChild(viewerStyle);
+
 // --- THEME ---
 window.toggleTheme = () => {
     const isDark = document.body.getAttribute('data-theme') === 'dark';
@@ -71,52 +83,49 @@ function fallbackCopyText(text) {
     document.body.removeChild(textArea);
 }
 
-// --- NEW DOWNLOAD UTILITY (FIXED BLOB DOWNLOAD) ---
-window.downloadMedia = (base64Data, fileName) => {
-    try {
-        // Check if valid base64
-        if (!base64Data || !base64Data.includes(',')) {
-            window.showPremiumAlert("Error", "Invalid file data.", true);
-            return;
-        }
+// ==========================================
+// --- ULTIMATE VIEW & SAVE HANDLER ---
+// ==========================================
 
-        // Split metadata and data
-        const parts = base64Data.split(',');
-        const mime = parts[0].match(/:(.*?);/)[1];
-        const bstr = atob(parts[1]);
-        let n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        while (n--) {
-            u8arr[n] = bstr.charCodeAt(n);
-        }
+window.handleMediaClick = (base64Data, fileName, type) => {
+    // Check Data
+    if (!base64Data || !base64Data.includes(',')) return window.showPremiumAlert("Error", "Invalid file data.", true);
 
-        // Create Blob
-        const blob = new Blob([u8arr], { type: mime });
-        const url = window.URL.createObjectURL(blob);
+    const overlay = document.createElement('div');
+    overlay.className = 'media-overlay';
+    
+    let contentHTML = '';
+    let isImage = type === 'image' || (fileName && fileName.match(/\.(jpeg|jpg|png|gif)$/i));
 
-        // Create Anchor and Trigger Download
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName || 'download';
-        document.body.appendChild(a);
-        a.click();
-        
-        // Cleanup
-        setTimeout(() => {
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }, 100);
-
-    } catch (e) {
-        console.error(e);
-        window.showPremiumAlert("Download Failed", "Could not process file.", true);
+    if (isImage) {
+        // IMAGE: Show direct IMG tag. 
+        // User MUST long press this to save.
+        contentHTML = `
+            <div class="media-hint">👇 ছবি সেভ করতে ছবির ওপর ২ সেকেন্ড চেপে ধরে রাখুন</div>
+            <img src="${base64Data}" class="media-content" style="pointer-events: auto;">
+        `;
+    } else {
+        // PDF/FILE: Embed it.
+        // Android/iOS WebView will render this inside the frame.
+        contentHTML = `
+             <div class="media-hint">ফাইলটি নিচে ওপেন হয়েছে। পড়তে জুম করুন।</div>
+             <iframe src="${base64Data}" class="media-pdf-frame"></iframe>
+        `;
     }
+
+    overlay.innerHTML = `
+        <div class="media-close" onclick="this.parentElement.remove()">✕ Close</div>
+        <div class="media-container">
+            ${contentHTML}
+        </div>
+    `;
+    
+    document.body.appendChild(overlay);
 };
 
-// --- IMAGE COMPRESSION & FILE HANDLER (FIXED) ---
+// --- IMAGE COMPRESSION ---
 const processFile = (file) => {
     return new Promise((resolve, reject) => {
-        // If image, compress it
         if (file.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.readAsDataURL(file);
@@ -126,28 +135,18 @@ const processFile = (file) => {
                 img.onload = () => {
                     const canvas = document.createElement('canvas');
                     const ctx = canvas.getContext('2d');
-                    // Resize logic: Max 1024px width/height
-                    const MAX_WIDTH = 1024;
-                    const MAX_HEIGHT = 1024;
-                    let width = img.width;
-                    let height = img.height;
-
-                    if (width > height) {
-                        if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-                    } else {
-                        if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
-                    }
-                    canvas.width = width;
-                    canvas.height = height;
+                    const MAX_WIDTH = 1024; const MAX_HEIGHT = 1024;
+                    let width = img.width; let height = img.height;
+                    if (width > height) { if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; } } 
+                    else { if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; } }
+                    canvas.width = width; canvas.height = height;
                     ctx.drawImage(img, 0, 0, width, height);
-                    // Compress to JPEG 0.7 quality
                     resolve(canvas.toDataURL('image/jpeg', 0.7)); 
                 };
                 img.onerror = (err) => reject(err);
             };
             reader.onerror = (err) => reject(err);
         } else {
-            // Non-image files (PDF/Txt etc) - Standard Read
             const reader = new FileReader();
             reader.onload = () => resolve(reader.result);
             reader.onerror = (error) => reject(error);
@@ -187,8 +186,7 @@ onValue(ref(db, 'settings'), (s) => {
             if (data.system_status === 'off') {
                 if(icon) icon.innerHTML = '<i class="fas fa-power-off" style="color:#ef4444;"></i>'; 
                 if(title) title.innerText = "System Offline"; 
-                const defMsg = "সিস্টেম অফলাইন।";
-                if(desc) desc.innerText = data.off_message || defMsg; 
+                if(desc) desc.innerText = data.off_message || "সিস্টেম অফলাইন।"; 
                 desc.style.whiteSpace = "pre-line";
             } else if (data.system_status === 'maintenance') {
                 if(icon) icon.innerHTML = '<i class="fas fa-tools pulse-anim" style="color:#f59e0b;"></i>'; 
@@ -241,7 +239,7 @@ setInterval(updateTotalDisplay, 30000);
 const sysHTML = `<div id="system-overlay" class="system-overlay"><div class="sys-box"><div id="sys-icon" class="sys-icon"></div><h2 id="sys-title" class="sys-title"></h2><p id="sys-desc" class="sys-desc"></p><div id="sys-countdown" class="countdown-box" style="display:none;"></div></div></div>`;
 document.body.insertAdjacentHTML('beforeend', sysHTML);
 
-// --- AUTH LOGIC ---
+// --- AUTH ---
 onAuthStateChanged(auth, u => {
     const loader = document.getElementById('startup-loader');
     const navBar = document.querySelector('.bottom-nav');
@@ -327,7 +325,6 @@ window.authAction = async () => {
 
 window.logout = () => signOut(auth).then(() => window.location.href = 'index.html');
 
-// --- HISTORY LOADING (WITH 12H CHECK) ---
 function loadHistory() { 
     onValue(ref(db, 'orders'), s => { 
         const list = document.getElementById('history-list'); if(!list) return; list.innerHTML = ""; 
@@ -337,20 +334,13 @@ function loadHistory() {
         if(allOrders.length === 0) list.innerHTML = '<p style="text-align:center; font-size:12px; color:var(--text-muted)">No orders yet.</p>';
         
         allOrders.forEach(v => {
-            // --- STRICT 12H EXPIRY CHECK ---
             let isExpired = false; 
             if(v.status === 'completed' && v.completed_at) { 
-                if((Date.now() - v.completed_at) > 43200000) isExpired = true; // 12H = 43200000 ms
+                if((Date.now() - v.completed_at) > 43200000) isExpired = true; 
             }
-            
-            // Only show button if NOT expired and NOT cancelled
-            let chatBtn = (!isExpired && v.status !== 'cancelled') 
-                ? `<button class="chat-btn-small" onclick="window.openChat('${v.key}', '${v.orderId_visible}')"><i class="fas fa-comments"></i></button>` 
-                : '';
-                
+            let chatBtn = (!isExpired && v.status !== 'cancelled') ? `<button class="chat-btn-small" onclick="window.openChat('${v.key}', '${v.orderId_visible}')"><i class="fas fa-comments"></i></button>` : '';
             let clr = v.status==='completed'?'#10b981':(v.status==='cancelled'?'#ef4444':'#f59e0b'); 
             let noteHTML = (v.status === 'cancelled' && v.admin_note) ? `<div style="font-size:11px; color:#ef4444; background:#fef2f2; padding:5px; border-radius:4px; margin-top:5px;">Reason: ${v.admin_note}</div>` : ""; 
-            
             list.innerHTML += `<div class="order-card"><div class="order-top"><b style="font-size:14px; color:var(--text);">${v.service}</b>${chatBtn}</div><div style="display:flex; justify-content:space-between; align-items:center; font-size:11px; color:var(--text-muted);"><span>#${v.orderId_visible}</span><span class="status-badge" style="color:${clr}; background:${clr}15;">${v.status.toUpperCase()}</span></div>${noteHTML}<div style="font-size:10px; color:var(--text-muted); text-align:right;">${new Date(v.timestamp).toLocaleDateString()}</div></div>`; 
         });
         if(document.getElementById('stat-total')) { document.getElementById('stat-total').innerText = t; document.getElementById('stat-comp').innerText = c; document.getElementById('stat-cancel').innerText = x; } 
@@ -436,7 +426,7 @@ window.renderServiceGrid = () => {
 
 window.filterServices = (cat, el) => { activeCategory = cat; document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active')); el.classList.add('active'); window.renderServiceGrid(); };
 
-// --- OPEN ORDER (IMAGE LABEL FIX) ---
+// --- OPEN ORDER ---
 window.openOrder = (key) => {
     const svc = globalServices[key]; if(!svc) return;
     curSvcKey = key; curBasePrice = parseInt(svc.price); curFinalPrice = curBasePrice; 
@@ -450,9 +440,8 @@ window.openOrder = (key) => {
             let html = ""; const safeLabel = f.label.replace(/[^a-zA-Z0-9]/g, '_');
             if(f.type === 'textarea') html = `<textarea class="auth-inp dynamic-field" data-label="${f.label}" rows="4" placeholder="${f.label}"></textarea>`;
             else if (f.type === 'link') html = `<input class="auth-inp dynamic-field" type="url" data-label="${f.label}" placeholder="https://...">`;
-            // Fixed Image Input with Label
             else if (f.type === 'file_url') {
-                html = `<div class="form-group"><label class="input-label" style="margin-bottom: 5px; display: block;">${f.label}</label><div class="file-upload-wrapper"><input type="file" class="file-upload-input dynamic-file-field" data-label="${f.label}" accept="image/*" onchange="window.handleFileSelect(this)"><div class="file-upload-label"><i class="fas fa-cloud-upload-alt"></i> Choose Image from Gallery</div><span class="file-preview-name"></span></div></div>`;
+                html = `<div class="form-group"><label class="input-label" style="margin-bottom: 5px; display: block;">${f.label}</label><div class="file-upload-wrapper"><input type="file" class="file-upload-input dynamic-file-field" data-label="${f.label}" accept="*/*" onchange="window.handleFileSelect(this)"><div class="file-upload-label"><i class="fas fa-cloud-upload-alt"></i> Choose File/Image</div><span class="file-preview-name"></span></div></div>`;
             }
             else if(f.type === 'radio_grid') {
                 const opts = f.options.split(',').map(s => s.trim()); let boxes = "";
@@ -474,9 +463,9 @@ window.confirmOrder = async () => {
     const btn = document.querySelector('#ord-modal .btn-main'); const inputs = document.querySelectorAll('.dynamic-field'); let details = ""; let empty = false;
     inputs.forEach(i => { const val = i.value.trim(); const lbl = i.getAttribute('data-label'); if(!val) empty = true; details += `${lbl}: ${val}\n`; });
     const fileInputs = document.querySelectorAll('.dynamic-file-field'); let fileDataUrl = ""; let hasFileField = fileInputs.length > 0; let fileSelected = false;
-    if(hasFileField) { const fileInput = fileInputs[0]; if(fileInput.files.length > 0) { fileSelected = true; const file = fileInput.files[0]; if(file.size > 10 * 1024 * 1024) return window.showPremiumAlert("Error", "Image too large (Max 10MB)", true); btn.innerHTML = "Uploading..."; btn.disabled = true; try { fileDataUrl = await processFile(file); } catch (e) { btn.innerHTML = "Order Now"; btn.disabled = false; return window.showPremiumAlert("Error", "Failed to read file", true); } } }
+    if(hasFileField) { const fileInput = fileInputs[0]; if(fileInput.files.length > 0) { fileSelected = true; const file = fileInput.files[0]; if(file.size > 10 * 1024 * 1024) return window.showPremiumAlert("Error", "File too large (Max 10MB)", true); btn.innerHTML = "Uploading..."; btn.disabled = true; try { fileDataUrl = await processFile(file); } catch (e) { btn.innerHTML = "Order Now"; btn.disabled = false; return window.showPremiumAlert("Error", "Failed to read file", true); } } }
     if(empty) { if(hasFileField) { btn.innerHTML = "Order Now"; btn.disabled = false; } return window.showPremiumAlert("Missing Info", "Please fill all text fields.", true); }
-    if(hasFileField && !fileSelected) { if(hasFileField) { btn.innerHTML = "Order Now"; btn.disabled = false; } return window.showPremiumAlert("Missing Info", "Please select an image.", true); }
+    if(hasFileField && !fileSelected) { if(hasFileField) { btn.innerHTML = "Order Now"; btn.disabled = false; } return window.showPremiumAlert("Missing Info", "Please select a file.", true); }
     btn.innerHTML = "Processing..."; btn.disabled = true;
     runTransaction(ref(db, 'users/' + user.uid + '/balance'), (bal) => { if (bal >= curFinalPrice) return bal - curFinalPrice; return; }).then(async (res) => { 
         if(res.committed) { 
@@ -505,109 +494,72 @@ window.handleChatFile = async (input) => {
     } catch(e) { window.showPremiumAlert("Error", "Failed to send file.", true); }
 };
 
-// --- CHAT LOGIC (12H AUTO DELETE + UPDATED DOWNLOAD FIX) ---
+// --- CHAT LOGIC ---
 window.openChat = (k, id) => { 
     const chatModal = document.getElementById('chat-modal'); if(!chatModal) return;
-    
-    // Clear previous chat immediately
     document.getElementById('chat-box').innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);"><i class="fas fa-spinner fa-spin"></i> Loading...</div>';
-    
     activeChat = k; 
-    
     if(document.getElementById('chat-head')) document.getElementById('chat-head').innerText = "Chat #" + id; 
     const inp = document.getElementById('chat-input-wrap'), cls = document.getElementById('chat-closed-wrap'); 
     if (orderStatusListener) off(orderStatusListener); 
-    
-    // 12H Expiry Logic
     const EXPIRY_TIME_MS = 12 * 60 * 60 * 1000;
 
     orderStatusListener = onValue(ref(db, 'orders/' + k), (s) => { 
         const data = s.val(); 
-        
-        // If order removed or cancelled, close chat
         if(!data || data.status === 'cancelled') { window.closeChatModal(); return; } 
-        
         if (chatTimerInterval) clearInterval(chatTimerInterval); 
-        
-        // --- EXPIRY CHECK INSIDE OPEN CHAT ---
         if (data.status === 'completed' && data.completed_at) {
             const timePassed = Date.now() - data.completed_at;
             if (timePassed > EXPIRY_TIME_MS) {
-                // Time up! Remove chat data and close modal
-                remove(ref(db, 'chats/'+k));
-                window.closeChatModal();
-                window.showPremiumAlert("Chat Expired", "12 hours passed. Chat is now closed.", true);
-                return;
+                remove(ref(db, 'chats/'+k)); window.closeChatModal(); window.showPremiumAlert("Chat Expired", "12 hours passed. Chat is now closed.", true); return;
             }
         }
-
-        if (data.status === 'pending') { 
-            inp.style.display = 'flex'; cls.style.display = 'none'; 
-        } else if (data.status === 'processing') { 
-            inp.style.display = 'none'; cls.style.display = 'block'; cls.className = 'chat-closed-ui processing'; 
-            cls.innerHTML = '<i class="fas fa-lock"></i> অর্ডার প্রসেসিং এ আছে। চ্যাট বন্ধ।'; 
-        } else if (data.status === 'completed') { 
+        if (data.status === 'pending') { inp.style.display = 'flex'; cls.style.display = 'none'; } 
+        else if (data.status === 'processing') { inp.style.display = 'none'; cls.style.display = 'block'; cls.className = 'chat-closed-ui processing'; cls.innerHTML = '<i class="fas fa-lock"></i> অর্ডার প্রসেসিং এ আছে। চ্যাট বন্ধ।'; } 
+        else if (data.status === 'completed') { 
             inp.style.display = 'none'; cls.style.display = 'block'; cls.className = 'chat-closed-ui'; 
-            
             const updateTimer = () => { 
                 const diff = EXPIRY_TIME_MS - (Date.now() - (data.completed_at || 0)); 
-                if (diff <= 0) { 
-                    clearInterval(chatTimerInterval); 
-                    remove(ref(db, 'chats/'+k)); 
-                    window.closeChatModal(); 
-                    window.showPremiumAlert("Chat Expired", "Time limit reached.", true);
-                } else { 
-                    const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)); 
-                    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-                    cls.innerHTML = `<i class="fas fa-history"></i> Chat expiring in: ${h}h ${m}m`; 
-                } 
+                if (diff <= 0) { clearInterval(chatTimerInterval); remove(ref(db, 'chats/'+k)); window.closeChatModal(); window.showPremiumAlert("Chat Expired", "Time limit reached.", true); } 
+                else { const h = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)); const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60)); cls.innerHTML = `<i class="fas fa-history"></i> Chat expiring in: ${h}h ${m}m`; } 
             }; 
-            updateTimer(); 
-            chatTimerInterval = setInterval(updateTimer, 60000); 
+            updateTimer(); chatTimerInterval = setInterval(updateTimer, 60000); 
         } 
     }); 
     
-    // Open Modal
     chatModal.style.display='flex'; 
-
     let isChatInit = true;
     onValue(ref(db, 'chats/'+k), s => { 
-        const b = document.getElementById('chat-box'); 
-        if(!b) return;
-        b.innerHTML=""; 
+        const b = document.getElementById('chat-box'); if(!b) return; b.innerHTML=""; 
         const chatData = []; let newMsgFound = false;
-        
-        if(s.exists()) {
-            s.forEach(c => { const m = c.val(); chatData.push(m); if (!isChatInit && m.s !== user.uid) newMsgFound = true; });
-        }
+        if(s.exists()) { s.forEach(c => { const m = c.val(); chatData.push(m); if (!isChatInit && m.s !== user.uid) newMsgFound = true; }); }
         if(newMsgFound) sndMsg.play().catch(()=>{}); isChatInit = false; 
         
         chatData.forEach(m => { 
             const isMe = (m.s === user.uid); let content = "";
             
-            // --- UPDATED DOWNLOAD HANDLER ---
+            // --- UPDATED MEDIA RENDERING ---
             if(m.type === 'image') {
                 content = `
-                    <img src="${m.file}" class="chat-img-preview"><br>
-                    <button class="chat-file-download" onclick="window.downloadMedia('${m.file}', '${m.fileName || 'image.jpg'}')">
-                        <i class="fas fa-download"></i> Download Image
+                    <img src="${m.file}" class="chat-img-preview" onclick="window.handleMediaClick('${m.file}', '${m.fileName || 'image.jpg'}', 'image')"><br>
+                    <button class="chat-file-download" style="background:rgba(255,255,255,0.2); width:100%; justify-content:center;" onclick="window.handleMediaClick('${m.file}', '${m.fileName || 'image.jpg'}', 'image')">
+                        <i class="fas fa-expand"></i> View
                     </button>`;
             } else if (m.type === 'file') {
+                let isPdf = m.file.includes('application/pdf');
+                let iconClass = isPdf ? "fa-file-pdf" : "fa-file";
+                let iconColor = isPdf ? "#ef4444" : "var(--text)";
                 content = `
-                    <div style="display:flex;align-items:center;gap:10px;">
-                        <i class="fas fa-file" style="font-size:20px;"></i> <span>${m.fileName || 'File'}</span>
+                    <div style="display:flex;align-items:center;gap:10px; margin-bottom:6px;">
+                        <i class="fas ${iconClass}" style="font-size:24px; color:${iconColor};"></i> 
+                        <span style="font-size:12px; font-weight:600;">${m.fileName || 'Document'}</span>
                     </div>
-                    <button class="chat-file-download" onclick="window.downloadMedia('${m.file}', '${m.fileName || 'file.txt'}')">
-                        <i class="fas fa-download"></i> Download File
+                    <button class="chat-file-download" style="background:#2563eb; color:white; width:100%; justify-content:center;" onclick="window.handleMediaClick('${m.file}', '${m.fileName || 'file'}', 'file')">
+                        <i class="fas fa-eye"></i> View File
                     </button>`;
             } else {
                 const linkify = (text) => { const urlRegex = /(https?:\/\/[^\s]+)/g; return text.replace(urlRegex, function(url) { return `<a href="${url}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()" style="color:inherit; text-decoration:underline; font-weight:bold; word-break: break-all;">${url}</a>`; }); };
-                const msgContent = linkify(m.t || "");
-                // Safe Copy Logic
-                const safeText = encodeURIComponent(m.t || "");
-                const copyIcon = `<i class="fas fa-copy copy-btn-icon" onclick="event.stopPropagation(); window.copyText(decodeURIComponent('${safeText}'))"></i>`;
-                const textColor = isMe ? 'white' : 'var(--text)';
-                content = `<span style="color:${textColor}; display:block;">${msgContent}</span>${copyIcon}`;
+                content = `<span style="color:${isMe ? 'white' : 'var(--text)'}; display:block;">${linkify(m.t || "")}</span>`;
             }
             b.innerHTML += `<div class="msg-row ${isMe?'me':'adm'}"><div class="msg ${isMe?'msg-me':'msg-adm'}">${content}</div></div>`; 
         }); 
@@ -619,8 +571,6 @@ window.sendMsg = () => { const t = document.getElementById('chat-in').value; if(
 window.closeChatModal = () => { document.getElementById('chat-modal').style.display='none'; if (chatTimerInterval) clearInterval(chatTimerInterval); if(orderStatusListener) off(orderStatusListener); };
 
 // ================= SECURITY MODULE =================
-document.addEventListener('contextmenu', event => event.preventDefault());
+// Note: We removed the contextmenu preventDefault to allow saving images on mobile
 document.onkeydown = function(e) { if (e.keyCode === 123 || (e.ctrlKey && e.shiftKey && (e.keyCode === 73 || e.keyCode === 74)) || (e.ctrlKey && e.keyCode === 85)) return false; };
-window.addEventListener('blur', () => { document.body.classList.add('blur-mode'); document.title = "⚠️ Security Alert"; });
-window.addEventListener('focus', () => { document.body.classList.remove('blur-mode'); document.title = "Siͥleͣnͫt Cyber Raid Portal"; });
 document.querySelectorAll('img').forEach(img => { img.addEventListener('dragstart', e => e.preventDefault()); });
